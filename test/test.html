@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Judol Detector DOM Test</title>
+    <style>
+      :root {
+        color: #111827;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      body {
+        background: #f8fafc;
+        margin: 0;
+      }
+
+      main {
+        margin: 0 auto;
+        max-width: 900px;
+        padding: 32px 20px 56px;
+      }
+
+      h1 {
+        font-size: 28px;
+        margin: 0 0 8px;
+      }
+
+      h2 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+
+      p {
+        line-height: 1.65;
+      }
+
+      .panel {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        margin-top: 18px;
+        padding: 18px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      button {
+        background: #111827;
+        border: 0;
+        border-radius: 8px;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        padding: 10px 14px;
+      }
+
+      code,
+      pre {
+        background: #f1f5f9;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      code {
+        padding: 2px 5px;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 12px;
+      }
+
+      .mutations {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Judol Detector DOM Test</h1>
+      <p>
+        Halaman ini dipakai untuk mengetes content script: scanning DOM,
+        highlight, tooltip, rescan, dan blur.
+      </p>
+
+      <section class="panel">
+        <h2>Exact keyword dari keywords.txt</h2>
+        <p>
+          Teks ini memuat maxwin, gacor, slot, dan hoki. Semua kata ini
+          seharusnya terdeteksi oleh KMP dan Boyer-Moore jika ada di
+          <code>keywords/keywords.txt</code>.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Regex format kata angka</h2>
+        <p>
+          Contoh yang harus kena regex: MAXWIN88, SLOT99, GACOR999,
+          DEWABET77, RAJASLOT123, MADU308.
+        </p>
+        <p>
+          Contoh pembanding: angka 12345 saja, kata tanpa angka, dan
+          PROMO7 tidak perlu dianggap match regex karena hanya satu angka.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Fuzzy dan visual spoofing</h2>
+        <p>
+          Contoh variasi visual: H0KI, G4COR, MAXW1N, SL0T, dan
+          G&alpha;cor999. Bagian ini dipakai untuk melihat weighted
+          Levenshtein dan normalisasi karakter mirip.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Elemen yang seharusnya dilewati</h2>
+        <p>
+          Kata maxwin di paragraf biasa ini memang boleh terdeteksi.
+        </p>
+        <pre>maxwin di dalam pre/code seharusnya tidak di-highlight</pre>
+        <textarea rows="3" style="width: 100%">slot di textarea seharusnya tidak di-highlight</textarea>
+        <script>
+          window.__judolTestHiddenText = "gacor di script jangan di-scan";
+        </script>
+      </section>
+
+      <section class="panel">
+        <h2>Auto-rescan DOM mutation</h2>
+        <p>
+          Klik tombol di bawah. Content baru harus otomatis terdeteksi tanpa
+          reload halaman.
+        </p>
+        <div class="actions">
+          <button id="add-text" type="button">Tambah Teks Judol</button>
+          <button id="add-safe-text" type="button">Tambah Teks Aman</button>
+          <button id="clear-dynamic" type="button">Hapus Teks Dinamis</button>
+        </div>
+        <div id="dynamic-area" class="mutations" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script>
+      const dynamicArea = document.getElementById("dynamic-area");
+      const addTextButton = document.getElementById("add-text");
+      const addSafeTextButton = document.getElementById("add-safe-text");
+      const clearDynamicButton = document.getElementById("clear-dynamic");
+      let counter = 1;
+
+      addTextButton.addEventListener("click", () => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent =
+          "Dynamic " + counter + ": RAJASLOT77 muncul bareng H0KI dan MAXWIN234.";
+        dynamicArea.appendChild(paragraph);
+        counter += 1;
+      });
+
+      addSafeTextButton.addEventListener("click", () => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent =
+          "Dynamic aman " + counter + ": paragraf biasa tanpa pola mencurigakan.";
+        dynamicArea.appendChild(paragraph);
+        counter += 1;
+      });
+
+      clearDynamicButton.addEventListener("click", () => {
+        dynamicArea.replaceChildren();
+      });
+    </script>
+  </body>
+</html>

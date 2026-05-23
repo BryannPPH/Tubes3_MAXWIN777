@@ -1,0 +1,55 @@
+.judol-detector-highlight {
+  background: rgba(255, 213, 79, 0.72);
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: inherit;
+  cursor: help;
+  outline: 1px solid rgba(177, 119, 0, 0.42);
+  padding: 0 0.08em;
+}
+
+.judol-detector-highlight.judol-detector-blurred {
+  background: rgba(30, 41, 59, 0.18);
+  filter: blur(4px);
+  text-shadow: 0 0 8px currentColor;
+  user-select: none;
+}
+
+.judol-detector-tooltip {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
+  color: #f9fafb;
+  font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  left: 0;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 10px 12px;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  width: max-content;
+  z-index: 2147483647;
+}
+
+.judol-detector-tooltip[hidden] {
+  display: none;
+}
+
+.judol-detector-tooltip-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 82px minmax(0, 1fr);
+  margin: 3px 0;
+}
+
+.judol-detector-tooltip-label {
+  color: #9ca3af;
+}
+
+.judol-detector-tooltip strong {
+  color: #ffffff;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}

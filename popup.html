@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Judol Detector</title>
+  </head>
+  <body>
+    <main id="judol-popup-root" class="judol-popup">
+      <header class="popup-header">
+        <div>
+          <p class="eyebrow">Judol Detector</p>
+          <h1>Scan DOM</h1>
+        </div>
+        <button id="rescan-button" class="icon-button" type="button" title="Rescan halaman">
+          R
+        </button>
+      </header>
+
+      <section class="control-row">
+        <label class="toggle">
+          <input id="blur-toggle" type="checkbox" />
+          <span>Blur teks terdeteksi</span>
+        </label>
+      </section>
+
+      <section class="metric-grid" aria-live="polite">
+        <div>
+          <span class="metric-label">Total match</span>
+          <strong id="total-matches">0</strong>
+        </div>
+        <div>
+          <span class="metric-label">Unik</span>
+          <strong id="unique-detections">0</strong>
+        </div>
+      </section>
+
+      <section>
+        <h2>Algoritma</h2>
+        <div id="algorithm-list" class="stack"></div>
+      </section>
+
+      <section>
+        <h2>Keyword</h2>
+        <div id="keyword-list" class="stack"></div>
+      </section>
+
+      <p id="status-text" class="status">Menunggu hasil scan.</p>
+    </main>
+    <script type="module" src="/src/popup/popup.ts"></script>
+  </body>
+</html>

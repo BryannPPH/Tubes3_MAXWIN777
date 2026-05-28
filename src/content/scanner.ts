@@ -34,6 +34,8 @@ export interface PageScanResult {
 const ALGORITHMS: DetectionAlgorithmName[] = [
   "kmp",
   "boyer-moore",
+  "aho-corasick",
+  "rabin-karp",
   "regex",
   "weighted-levenshtein",
 ];
@@ -44,6 +46,8 @@ function createAlgorithmTotals(): Record<DetectionAlgorithmName, number> {
   return {
     kmp: 0,
     "boyer-moore": 0,
+    "aho-corasick": 0,
+    "rabin-karp": 0,
     regex: 0,
     "weighted-levenshtein": 0,
   };

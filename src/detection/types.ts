@@ -1,4 +1,4 @@
-export type ExactAlgorithmName = "kmp" | "boyer-moore";
+export type ExactAlgorithmName = "kmp" | "boyer-moore" | "aho-corasick" | "rabin-karp";
 
 export type DetectionAlgorithmName =
   | ExactAlgorithmName

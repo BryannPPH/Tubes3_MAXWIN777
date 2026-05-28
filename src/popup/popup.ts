@@ -14,6 +14,8 @@ const BLUR_STORAGE_KEY = "judolDetectorBlurEnabled";
 const ALGORITHMS: DetectionAlgorithmName[] = [
   "kmp",
   "boyer-moore",
+  "aho-corasick",
+  "rabin-karp",
   "regex",
   "weighted-levenshtein",
 ];
@@ -21,6 +23,8 @@ const ALGORITHMS: DetectionAlgorithmName[] = [
 const ALGORITHM_LABELS: Record<DetectionAlgorithmName, string> = {
   kmp: "KMP",
   "boyer-moore": "Boyer-Moore",
+  "aho-corasick": "Aho-Corasick",
+  "rabin-karp": "Rabin-Karp",
   regex: "RegEx",
   "weighted-levenshtein": "Weighted Levenshtein",
 };

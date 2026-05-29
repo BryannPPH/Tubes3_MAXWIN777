@@ -10,7 +10,8 @@ import type {
 import type { PopupScanSummary } from "../extension/protocol";
 import { nowMs } from "../utils/clock";
 import { collectTextNodes } from "./domFilters";
-import { describeMatch } from "./matchFormatter";
+import { collectContainedPatterns } from "../utils/manualSearch";
+import { describeMatch, formatAlgorithmName } from "./matchFormatter";
 import { scanImageKeywords } from "./ocr";
 
 export interface HighlightDescriptor {
@@ -105,6 +106,63 @@ function rangesOverlap(
   return left.start < right.end && right.start < left.end;
 }
 
+function createRangeKey(start: number, end: number): string {
+  return `${start}:${end}`;
+}
+
+function mergeEquivalentCandidates(
+  candidates: HighlightDescriptor[],
+): HighlightDescriptor[] {
+  const merged = new Map<string, HighlightDescriptor>();
+
+  for (const candidate of candidates) {
+    const key = createRangeKey(candidate.start, candidate.end);
+    const existing = merged.get(key);
+
+    if (existing === undefined) {
+      merged.set(key, {
+        ...candidate,
+        algorithmNames: [...candidate.algorithmNames],
+      });
+      continue;
+    }
+
+    let addedAlgorithm = false;
+    for (const algorithm of candidate.algorithmNames) {
+      let alreadyRegistered = false;
+
+      for (const registeredAlgorithm of existing.algorithmNames) {
+        if (registeredAlgorithm === algorithm) {
+          alreadyRegistered = true;
+          break;
+        }
+      }
+
+      if (!alreadyRegistered) {
+        existing.algorithmNames.push(algorithm);
+        addedAlgorithm = true;
+      }
+    }
+
+    if (addedAlgorithm) {
+      existing.durationMs += candidate.durationMs;
+      existing.durationLabel = formatDuration(existing.durationMs);
+      existing.algorithmLabel = existing.algorithmNames
+        .map(formatAlgorithmName)
+        .join(", ");
+    }
+
+    if (candidate.priority > existing.priority) {
+      existing.keyword = candidate.keyword;
+      existing.matchedText = candidate.matchedText;
+      existing.occurrenceKey = candidate.occurrenceKey;
+      existing.priority = candidate.priority;
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
 function selectNonOverlappingMatches(
   candidates: HighlightDescriptor[],
 ): HighlightDescriptor[] {
@@ -159,6 +217,19 @@ function buildDetectionBuckets(
     });
 }
 
+function incrementOccurrenceCount(
+  counts: Map<string, number>,
+  labels: Map<string, string>,
+  key: string,
+  label: string,
+): void {
+  if (!labels.has(key)) {
+    labels.set(key, label);
+  }
+
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
 function isVisibleImage(image: HTMLImageElement): boolean {
   if (image instanceof HTMLImageElement === false) {
     return false;
@@ -205,6 +276,7 @@ export async function scanPage(
   const algorithmMatches = createAlgorithmTotals();
   const occurrenceCounts = new Map<string, number>();
   const occurrenceLabels = new Map<string, string>();
+  let totalMatches = 0;
 
   if (root === null) {
     return {
@@ -231,9 +303,11 @@ export async function scanPage(
 
     for (const benchmark of report.benchmarks) {
       algorithmDurationsMs[benchmark.algorithm] += benchmark.durationMs;
+      algorithmMatches[benchmark.algorithm] += benchmark.matches;
     }
 
     const candidates: HighlightDescriptor[] = [];
+    const seenDetectionKeys = new Set<string>();
 
     for (const match of report.matches) {
       if (!isValidRange(match, text.length)) {
@@ -242,6 +316,18 @@ export async function scanPage(
 
       const presentation = describeMatch(match, report.benchmarks);
       const occurrenceKey = createOccurrenceKey(presentation.keyword);
+      const detectionKey = `${occurrenceKey}:${createRangeKey(match.start, match.end)}`;
+
+      if (!seenDetectionKeys.has(detectionKey)) {
+        seenDetectionKeys.add(detectionKey);
+        incrementOccurrenceCount(
+          occurrenceCounts,
+          occurrenceLabels,
+          occurrenceKey,
+          presentation.keyword,
+        );
+        totalMatches += 1;
+      }
 
       candidates.push({
         node,
@@ -258,12 +344,11 @@ export async function scanPage(
         priority: getMatchPriority(match),
       });
 
-      if (!occurrenceLabels.has(occurrenceKey)) {
-        occurrenceLabels.set(occurrenceKey, presentation.keyword);
-      }
     }
 
-    const selected = selectNonOverlappingMatches(candidates);
+    const selected = selectNonOverlappingMatches(
+      mergeEquivalentCandidates(candidates),
+    );
     textHighlights.push(...selected);
   }
 
@@ -275,9 +360,10 @@ export async function scanPage(
     }
 
     const metadataText = getImageMetadataText(image);
-    let matchedKeywords = keywords.filter((keyword) =>
-      metadataText.includes(keyword.raw.toLowerCase()),
-    ).map((keyword) => keyword.raw);
+    let matchedKeywords = collectContainedPatterns(
+      metadataText,
+      keywords.map((keyword) => keyword.raw.toLowerCase()),
+    );
     let matchedText = getImageSnippet(metadataText);
     let detectionMethod: "metadata" | "ocr" = "metadata";
     let durationMs = 0;
@@ -310,27 +396,19 @@ export async function scanPage(
       priority: 1,
     });
 
-    if (!occurrenceLabels.has(occurrenceKey)) {
-      occurrenceLabels.set(occurrenceKey, primaryKeyword);
+    for (const keyword of matchedKeywords) {
+      incrementOccurrenceCount(
+        occurrenceCounts,
+        occurrenceLabels,
+        createOccurrenceKey(keyword),
+        keyword,
+      );
+      totalMatches += 1;
     }
 
-    occurrenceCounts.set(
-      occurrenceKey,
-      (occurrenceCounts.get(occurrenceKey) ?? 0) + 1,
-    );
-
-    algorithmMatches.ocr += matchedKeywords.length;
-    algorithmDurationsMs.ocr += durationMs;
-  }
-
-  for (const highlight of textHighlights) {
-    occurrenceCounts.set(
-      highlight.occurrenceKey,
-      (occurrenceCounts.get(highlight.occurrenceKey) ?? 0) + 1,
-    );
-
-    for (const algorithm of highlight.algorithmNames) {
-      algorithmMatches[algorithm] += 1;
+    if (detectionMethod === "ocr") {
+      algorithmMatches.ocr += matchedKeywords.length;
+      algorithmDurationsMs.ocr += durationMs;
     }
   }
 
@@ -353,7 +431,7 @@ export async function scanPage(
     summary: {
       scannedAt: Date.now(),
       totalDurationMs: nowMs() - startedAt,
-      totalMatches: textHighlights.length + imageHighlights.length,
+      totalMatches,
       uniqueDetections: occurrenceCounts.size,
       algorithmMatches,
       algorithmDurationsMs,

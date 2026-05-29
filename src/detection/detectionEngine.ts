@@ -39,6 +39,19 @@ function createExactMatchKey(keyword: string, start: number, end: number): strin
   return `${keyword}:${start}:${end}`;
 }
 
+function createRangeKey(start: number, end: number): string {
+  return `${start}:${end}`;
+}
+
+function countPhraseTokens(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return 0;
+  }
+
+  return trimmed.split(/\s+/u).length;
+}
+
 function addExactMatches(
   target: Map<string, ExactMatchRecord>,
   keyword: KeywordEntry,
@@ -301,6 +314,7 @@ function collectFuzzyMatches(
   text: string,
   keywords: KeywordEntry[],
   exactKeywords: Set<string>,
+  blockedSpanKeys: Set<string>,
   options: FuzzyDetectionOptions,
 ): {
   matches: FuzzyMatchRecord[];
@@ -309,22 +323,26 @@ function collectFuzzyMatches(
   unmatchedKeywords: string[];
 } {
   const start = nowMs();
-  const candidates = extractCandidateSegments(text, normalizeForFuzzy);
   const matches: FuzzyMatchRecord[] = [];
   const keywordBenchmarks: KeywordBenchmark[] = [];
   const unmatchedKeywords: string[] = [];
   let comparisons = 0;
+  const pendingKeywords = keywords.filter((keyword) => !exactKeywords.has(keyword.raw));
+  const maxPhraseTokens = pendingKeywords.reduce((currentMax, keyword) => {
+    return Math.max(currentMax, countPhraseTokens(keyword.raw));
+  }, 1);
+  const candidates = extractCandidateSegments(text, normalizeForFuzzy, maxPhraseTokens);
 
-  for (const keyword of keywords) {
-    if (exactKeywords.has(keyword.raw)) {
-      continue;
-    }
-
+  for (const keyword of pendingKeywords) {
     const keywordStart = nowMs();
     let keywordComparisons = 0;
     let bestMatch: FuzzyMatchRecord | null = null;
 
     for (const candidate of candidates) {
+      if (blockedSpanKeys.has(createRangeKey(candidate.start, candidate.end))) {
+        continue;
+      }
+
       if (!isCandidateLengthRelevant(keyword, candidate, options.maxLengthDelta)) {
         continue;
       }
@@ -384,7 +402,7 @@ function collectFuzzyMatches(
       durationMs: nowMs() - start,
       comparisons,
       matches: matches.length,
-      processedKeywords: keywords.length - exactKeywords.size,
+      processedKeywords: pendingKeywords.length,
       processedCandidates: candidates.length,
     },
     keywordBenchmarks,
@@ -400,10 +418,21 @@ export function detectJudolContent(
   const fuzzyOptions = mergeFuzzyOptions(options);
   const exactReport = collectExactMatches(text, keywords);
   const regexReport = collectRegexMatches(text);
+  const blockedSpanKeys = new Set<string>();
+
+  for (const match of exactReport.exactMatches) {
+    blockedSpanKeys.add(createRangeKey(match.start, match.end));
+  }
+
+  for (const match of regexReport.matches) {
+    blockedSpanKeys.add(createRangeKey(match.start, match.end));
+  }
+
   const fuzzyReport = collectFuzzyMatches(
     text,
     keywords,
     exactReport.exactKeywords,
+    blockedSpanKeys,
     fuzzyOptions,
   );
 

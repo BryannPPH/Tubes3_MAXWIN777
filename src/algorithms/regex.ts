@@ -1,13 +1,16 @@
 import type { RegexMatchRecord, TextSegment } from "../detection/types";
+import { containsPattern } from "../utils/manualSearch";
 
 export const JUDOL_REGEX_PATTERN =
   /(?<![\p{L}\p{N}_-])(?<candidate>(?=[\p{L}\p{N}_-]{4,})(?=[\p{L}\p{N}_-]*[\p{L}\p{M}])[\p{L}\p{N}_-]*\d{2,3})(?![\p{L}\p{N}_-])/gu;
 
-const GENERIC_TOKEN_PATTERN =
-  /(?<![\p{L}\p{N}_-])(?<candidate>[\p{L}\p{N}_-]{4,})(?![\p{L}\p{N}_-])/gu;
+const WORD_TOKEN_PATTERN =
+  /(?<![\p{L}\p{N}_-])(?<candidate>[\p{L}\p{N}_-]+)(?![\p{L}\p{N}_-])/gu;
 
 const TRAILING_JUDOL_DIGITS_PATTERN =
   /^(?<core>[\p{L}\p{N}_-]*[\p{L}\p{M}][\p{L}\p{N}_-]*?)\d{2,3}$/u;
+
+const WHITESPACE_SEPARATOR_PATTERN = /^\s+$/u;
 
 // Gambling numbers: explicitly match only 88 and 777
 const GAMBLING_NUMBER_PATTERN = /(?<![\p{L}\p{N}_-])(?<candidate>(?:88|777))(?![\p{L}\p{N}_-])/gu;
@@ -20,6 +23,78 @@ function getFuzzyComparableValue(candidate: string): string {
   }
 
   return candidate;
+}
+
+interface CandidateToken {
+  start: number;
+  end: number;
+}
+
+function createSegment(
+  text: string,
+  start: number,
+  end: number,
+  normalize: (value: string) => string,
+  source: TextSegment["source"],
+): TextSegment {
+  const value = text.slice(start, end);
+
+  return {
+    value,
+    normalizedFuzzy: normalize(getFuzzyComparableValue(value)),
+    start,
+    end,
+    source,
+  };
+}
+
+function collectCandidateTokens(text: string): CandidateToken[] {
+  const tokens: CandidateToken[] = [];
+  let match: RegExpExecArray | null = WORD_TOKEN_PATTERN.exec(text);
+
+  while (match !== null) {
+    const candidate = match.groups?.candidate ?? match[0];
+    const start = match.index;
+
+    tokens.push({
+      start,
+      end: start + candidate.length,
+    });
+
+    match = WORD_TOKEN_PATTERN.exec(text);
+  }
+
+  WORD_TOKEN_PATTERN.lastIndex = 0;
+  return tokens;
+}
+
+function addTokenWindowSegments(
+  target: Map<string, TextSegment>,
+  text: string,
+  tokens: CandidateToken[],
+  normalize: (value: string) => string,
+  maxPhraseTokens: number,
+): void {
+  for (let startIndex = 0; startIndex < tokens.length; startIndex += 1) {
+    const maxEndIndex = Math.min(tokens.length, startIndex + maxPhraseTokens);
+
+    for (let endIndex = startIndex; endIndex < maxEndIndex; endIndex += 1) {
+      if (endIndex > startIndex) {
+        const separator = text.slice(tokens[endIndex - 1].end, tokens[endIndex].start);
+        if (!WHITESPACE_SEPARATOR_PATTERN.test(separator)) {
+          break;
+        }
+      }
+
+      const start = tokens[startIndex].start;
+      const end = tokens[endIndex].end;
+      const key = `${start}:${end}`;
+
+      if (!target.has(key)) {
+        target.set(key, createSegment(text, start, end, normalize, "token"));
+      }
+    }
+  }
 }
 
 export function scanWithRegex(text: string): RegexMatchRecord[] {
@@ -65,7 +140,9 @@ export function scanWithRegex(text: string): RegexMatchRecord[] {
     const windowStart = Math.max(0, start - 20);
     const windowEnd = Math.min(text.length, end + 20);
     const windowText = text.slice(windowStart, windowEnd).toLowerCase();
-    const hasContext = GAMBLING_CONTEXT_WORDS.some((w) => windowText.includes(w));
+    const hasContext = GAMBLING_CONTEXT_WORDS.some((word) =>
+      containsPattern(windowText, word),
+    );
     if (!hasContext) {
       match = GAMBLING_NUMBER_PATTERN.exec(text);
       continue;
@@ -115,43 +192,27 @@ export function scanWithRegex(text: string): RegexMatchRecord[] {
 export function extractCandidateSegments(
   text: string,
   normalize: (value: string) => string,
+  maxPhraseTokens: number = 1,
 ): TextSegment[] {
   const segments = new Map<string, TextSegment>();
 
   const regexMatches = scanWithRegex(text);
   for (const match of regexMatches) {
     const key = `${match.start}:${match.end}`;
-    segments.set(key, {
-      value: match.matchedText,
-      normalizedFuzzy: normalize(getFuzzyComparableValue(match.matchedText)),
-      start: match.start,
-      end: match.end,
-      source: "regex",
-    });
+    segments.set(
+      key,
+      createSegment(text, match.start, match.end, normalize, "regex"),
+    );
   }
 
-  let match: RegExpExecArray | null = GENERIC_TOKEN_PATTERN.exec(text);
-
-  while (match !== null) {
-    const candidate = match.groups?.candidate ?? match[0];
-    const start = match.index;
-    const end = start + candidate.length;
-    const key = `${start}:${end}`;
-
-    if (!segments.has(key)) {
-      segments.set(key, {
-        value: candidate,
-        normalizedFuzzy: normalize(getFuzzyComparableValue(candidate)),
-        start,
-        end,
-        source: "token",
-      });
-    }
-
-    match = GENERIC_TOKEN_PATTERN.exec(text);
-  }
-
-  GENERIC_TOKEN_PATTERN.lastIndex = 0;
+  const tokens = collectCandidateTokens(text);
+  addTokenWindowSegments(
+    segments,
+    text,
+    tokens,
+    normalize,
+    Math.max(1, maxPhraseTokens),
+  );
 
   return Array.from(segments.values()).sort((left, right) => left.start - right.start);
 }

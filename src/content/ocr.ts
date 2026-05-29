@@ -1,4 +1,5 @@
 import { createWorker } from "tesseract.js";
+import { collectContainedPatterns } from "../utils/manualSearch";
 
 export interface OcrImageMatchResult {
   text: string;
@@ -108,5 +109,8 @@ export async function scanImageKeywords(
 
 export function matchKeywordsInText(text: string, keywords: string[]): string[] {
   const normalizedText = text.toLowerCase();
-  return keywords.filter((keyword) => normalizedText.includes(normalizeKeyword(keyword)));
+  return collectContainedPatterns(
+    normalizedText,
+    keywords.map((keyword) => normalizeKeyword(keyword)),
+  );
 }

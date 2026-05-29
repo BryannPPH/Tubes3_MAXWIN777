@@ -1,5 +1,7 @@
 import { searchWithBoyerMoore } from "../algorithms/boyerMoore";
 import { searchWithKmp } from "../algorithms/kmp";
+import { searchWithAhoCorasick } from "../algorithms/ahoCorasick";
+import { searchMultipleWithRabinKarp } from "../algorithms/rabinKarp";
 import { extractCandidateSegments, scanWithRegex } from "../algorithms/regex";
 import { calculateWeightedLevenshtein } from "../algorithms/weightedLevenshtein";
 import { normalizeForExact, normalizeForFuzzy } from "./normalization";
@@ -147,6 +149,80 @@ function collectExactMatches(
 
   const boyerMooreDurationMs = nowMs() - boyerMooreStart;
 
+  // Aho-Corasick: process all keywords at once
+  let ahoCorasickComparisons = 0;
+  let ahoCorasickMatches = 0;
+  const ahoCorasickStart = nowMs();
+
+  const normalizedPatterns = keywords.map((k) => k.normalizedExact);
+  const ahoCorasickResult = searchWithAhoCorasick(normalizedText, normalizedPatterns);
+  ahoCorasickComparisons = ahoCorasickResult.comparisons;
+
+  for (const match of ahoCorasickResult.matches) {
+    ahoCorasickMatches += 1;
+    const keyword = keywords.find(
+      (k) => k.normalizedExact === match.pattern,
+    );
+
+    if (keyword !== undefined) {
+      exactKeywords.add(keyword.raw);
+      addExactMatches(mergedMatches, keyword, text, [match.position], "aho-corasick");
+    }
+  }
+
+  const ahoCorasickDurationMs = nowMs() - ahoCorasickStart;
+
+  // Rabin-Karp: search each keyword individually using rolling hash
+  let rabinKarpComparisons = 0;
+  let rabinKarpMatches = 0;
+  const rabinKarpStart = nowMs();
+
+  const rabinKarpResults = searchMultipleWithRabinKarp(
+    normalizedText,
+    normalizedPatterns,
+  );
+
+  for (const keyword of keywords) {
+    const result = rabinKarpResults[keyword.normalizedExact];
+
+    if (result === undefined) {
+      continue;
+    }
+
+    rabinKarpComparisons += result.comparisons;
+    rabinKarpMatches += result.positions.length;
+
+    if (result.positions.length > 0) {
+      exactKeywords.add(keyword.raw);
+      addExactMatches(mergedMatches, keyword, text, result.positions, "rabin-karp");
+    }
+
+    keywordBenchmarks.push({
+      keyword: keyword.raw,
+      algorithm: "rabin-karp",
+      durationMs: 0, // Accumulated in overall duration
+      comparisons: result.comparisons,
+      matches: result.positions.length,
+    });
+  }
+
+  const rabinKarpDurationMs = nowMs() - rabinKarpStart;
+
+  // Add Aho-Corasick keyword benchmarks
+  for (const keyword of keywords) {
+    const matches = ahoCorasickResult.matches.filter(
+      (m) => m.pattern === keyword.normalizedExact,
+    );
+
+    keywordBenchmarks.push({
+      keyword: keyword.raw,
+      algorithm: "aho-corasick",
+      durationMs: 0, // Accumulated in overall duration
+      comparisons: ahoCorasickComparisons,
+      matches: matches.length,
+    });
+  }
+
   const benchmarks: AlgorithmBenchmark[] = [
     {
       algorithm: "kmp",
@@ -161,6 +237,22 @@ function collectExactMatches(
       durationMs: boyerMooreDurationMs,
       comparisons: boyerMooreComparisons,
       matches: boyerMooreMatches,
+      processedKeywords: keywords.length,
+      processedCandidates: 0,
+    },
+    {
+      algorithm: "aho-corasick",
+      durationMs: ahoCorasickDurationMs,
+      comparisons: ahoCorasickComparisons,
+      matches: ahoCorasickMatches,
+      processedKeywords: keywords.length,
+      processedCandidates: 0,
+    },
+    {
+      algorithm: "rabin-karp",
+      durationMs: rabinKarpDurationMs,
+      comparisons: rabinKarpComparisons,
+      matches: rabinKarpMatches,
       processedKeywords: keywords.length,
       processedCandidates: 0,
     },

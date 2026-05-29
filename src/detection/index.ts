@@ -1,5 +1,7 @@
 export { searchWithKmp, buildFailureFunction } from "../algorithms/kmp";
 export { searchWithBoyerMoore, buildLastOccurrenceTable } from "../algorithms/boyerMoore";
+export { searchWithAhoCorasick, buildTrie, buildFailureLinks } from "../algorithms/ahoCorasick";
+export { searchWithRabinKarp, searchMultipleWithRabinKarp } from "../algorithms/rabinKarp";
 export {
   JUDOL_REGEX_PATTERN,
   scanWithRegex,

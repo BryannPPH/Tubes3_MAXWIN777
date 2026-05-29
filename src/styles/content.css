@@ -9,11 +9,21 @@
   padding: 0 0.08em;
 }
 
+.judol-detector-image {
+  cursor: help;
+  outline: 2px solid rgba(177, 119, 0, 0.55);
+  outline-offset: 2px;
+}
+
 .judol-detector-highlight.judol-detector-blurred {
   background: rgba(30, 41, 59, 0.18);
   filter: blur(4px);
   text-shadow: 0 0 8px currentColor;
   user-select: none;
+}
+
+.judol-detector-image.judol-detector-blurred {
+  filter: blur(4px);
 }
 
 .judol-detector-tooltip {

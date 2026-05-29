@@ -8,6 +8,7 @@ import {
   applyBlurState,
   clearHighlights,
   renderHighlights,
+  renderImageHighlights,
 } from "./highlighter";
 import {
   getStoredBlurEnabled,
@@ -152,7 +153,8 @@ async function scanAndRender(): Promise<PopupScanState> {
     clearHighlights();
 
     const result = await scanPage(blurEnabled);
-    renderHighlights(result.highlights, blurEnabled);
+    renderHighlights(result.textHighlights, blurEnabled);
+    renderImageHighlights(result.imageHighlights, blurEnabled);
     scanState = {
       status: "ready",
       summary: result.summary,

@@ -5,8 +5,20 @@
   "description": "Detects and marks suspicious judi online text on web pages.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16": "Anita_Max.png",
+    "32": "Anita_Max.png",
+    "48": "Anita_Max.png",
+    "128": "Anita_Max.png"
+  },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "Anita_Max.png",
+      "32": "Anita_Max.png",
+      "48": "Anita_Max.png",
+      "128": "Anita_Max.png"
+    }
   },
   "content_scripts": [
     {

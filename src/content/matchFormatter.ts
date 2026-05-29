@@ -20,6 +20,7 @@ const ALGORITHM_LABELS: Record<DetectionAlgorithmName, string> = {
   "rabin-karp": "Rabin-Karp",
   regex: "RegEx",
   "weighted-levenshtein": "Weighted Levenshtein",
+  ocr: "OCR",
 };
 
 export function formatAlgorithmName(algorithm: DetectionAlgorithmName): string {

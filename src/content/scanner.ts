@@ -10,6 +10,7 @@ import type {
 import type { PopupScanSummary } from "../extension/protocol";
 import { collectTextNodes } from "./domFilters";
 import { describeMatch } from "./matchFormatter";
+import { scanImageKeywords } from "./ocr";
 
 export interface HighlightDescriptor {
   node: Text;
@@ -26,8 +27,21 @@ export interface HighlightDescriptor {
   priority: number;
 }
 
+export interface ImageHighlightDescriptor {
+  element: HTMLImageElement;
+  keyword: string;
+  matchedText: string;
+  algorithmLabel: string;
+  durationLabel: string;
+  durationMs: number;
+  occurrenceKey: string;
+  occurrences: number;
+  priority: number;
+}
+
 export interface PageScanResult {
-  highlights: HighlightDescriptor[];
+  textHighlights: HighlightDescriptor[];
+  imageHighlights: ImageHighlightDescriptor[];
   summary: PopupScanSummary;
 }
 
@@ -38,6 +52,7 @@ const ALGORITHMS: DetectionAlgorithmName[] = [
   "rabin-karp",
   "regex",
   "weighted-levenshtein",
+  "ocr",
 ];
 
 let keywordCache: Promise<KeywordEntry[]> | null = null;
@@ -50,6 +65,7 @@ function createAlgorithmTotals(): Record<DetectionAlgorithmName, number> {
     "rabin-karp": 0,
     regex: 0,
     "weighted-levenshtein": 0,
+    ocr: 0,
   };
 }
 
@@ -142,12 +158,47 @@ function buildDetectionBuckets(
     });
 }
 
+function isVisibleImage(image: HTMLImageElement): boolean {
+  if (image instanceof HTMLImageElement === false) {
+    return false;
+  }
+
+  if (image.getClientRects().length === 0) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(image);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
+function getImageMetadataText(image: HTMLImageElement): string {
+  const source = image.currentSrc || image.src;
+  const alt = image.alt || "";
+  const title = image.title || "";
+  return [source, alt, title]
+    .map((value) => value.toLowerCase())
+    .join(" ");
+}
+
+function getImageSnippet(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 0.01) {
+    return "<0.01 ms";
+  }
+
+  return `${durationMs.toFixed(2)} ms`;
+}
+
 export async function scanPage(
   blurEnabled: boolean,
 ): Promise<PageScanResult> {
   const keywords = await getKeywords();
   const root = document.body;
-  const highlights: HighlightDescriptor[] = [];
+  const textHighlights: HighlightDescriptor[] = [];
+  const imageHighlights: ImageHighlightDescriptor[] = [];
   const algorithmDurationsMs = createAlgorithmTotals();
   const algorithmMatches = createAlgorithmTotals();
   const occurrenceCounts = new Map<string, number>();
@@ -155,7 +206,8 @@ export async function scanPage(
 
   if (root === null) {
     return {
-      highlights,
+      textHighlights,
+      imageHighlights,
       summary: {
         scannedAt: Date.now(),
         totalMatches: 0,
@@ -209,10 +261,66 @@ export async function scanPage(
     }
 
     const selected = selectNonOverlappingMatches(candidates);
-    highlights.push(...selected);
+    textHighlights.push(...selected);
   }
 
-  for (const highlight of highlights) {
+  const imageElements = Array.from(root.querySelectorAll("img"));
+
+  for (const image of imageElements) {
+    if (!isVisibleImage(image)) {
+      continue;
+    }
+
+    const metadataText = getImageMetadataText(image);
+    let matchedKeywords = keywords.filter((keyword) =>
+      metadataText.includes(keyword.raw.toLowerCase()),
+    ).map((keyword) => keyword.raw);
+    let matchedText = getImageSnippet(metadataText);
+    let detectionMethod: "metadata" | "ocr" = "metadata";
+    let durationMs = 0;
+
+    if (matchedKeywords.length === 0) {
+      const ocrResult = await scanImageKeywords(image, keywords.map((keyword) => keyword.raw));
+      matchedKeywords = ocrResult.matchedKeywords;
+      matchedText = getImageSnippet(ocrResult.text);
+      detectionMethod = "ocr";
+      durationMs = ocrResult.durationMs;
+    }
+
+    if (matchedKeywords.length === 0) {
+      continue;
+    }
+
+    const primaryKeyword = matchedKeywords[0];
+    const occurrenceKey = createOccurrenceKey(primaryKeyword);
+    const label = matchedKeywords.join(", ");
+
+    imageHighlights.push({
+      element: image,
+      keyword: label,
+      matchedText,
+      algorithmLabel: detectionMethod === "ocr" ? "OCR" : "Metadata",
+      durationLabel: formatDuration(durationMs),
+      durationMs,
+      occurrenceKey,
+      occurrences: 0,
+      priority: 1,
+    });
+
+    if (!occurrenceLabels.has(occurrenceKey)) {
+      occurrenceLabels.set(occurrenceKey, primaryKeyword);
+    }
+
+    occurrenceCounts.set(
+      occurrenceKey,
+      (occurrenceCounts.get(occurrenceKey) ?? 0) + 1,
+    );
+
+    algorithmMatches.ocr += matchedKeywords.length;
+    algorithmDurationsMs.ocr += durationMs;
+  }
+
+  for (const highlight of textHighlights) {
     occurrenceCounts.set(
       highlight.occurrenceKey,
       (occurrenceCounts.get(highlight.occurrenceKey) ?? 0) + 1,
@@ -223,7 +331,11 @@ export async function scanPage(
     }
   }
 
-  for (const highlight of highlights) {
+  for (const highlight of textHighlights) {
+    highlight.occurrences = occurrenceCounts.get(highlight.occurrenceKey) ?? 1;
+  }
+
+  for (const highlight of imageHighlights) {
     highlight.occurrences = occurrenceCounts.get(highlight.occurrenceKey) ?? 1;
   }
 
@@ -233,10 +345,11 @@ export async function scanPage(
   }
 
   return {
-    highlights,
+    textHighlights,
+    imageHighlights,
     summary: {
       scannedAt: Date.now(),
-      totalMatches: highlights.length,
+      totalMatches: textHighlights.length + imageHighlights.length,
       uniqueDetections: occurrenceCounts.size,
       algorithmMatches,
       algorithmDurationsMs,

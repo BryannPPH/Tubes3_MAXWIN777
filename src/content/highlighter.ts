@@ -8,6 +8,16 @@ const HIGHLIGHT_CLASS = "judol-detector-highlight";
 const BLUR_CLASS = "judol-detector-blurred";
 
 let activeHighlights: HTMLElement[] = [];
+let activeImageHighlights: HTMLImageElement[] = [];
+
+export interface ImageHighlightDescriptor {
+  element: HTMLImageElement;
+  keyword: string;
+  matchedText: string;
+  algorithmLabel: string;
+  durationLabel: string;
+  occurrences: number;
+}
 
 function groupHighlightsByNode(
   highlights: HighlightDescriptor[],
@@ -111,6 +121,37 @@ export function clearHighlights(): void {
   }
 
   activeHighlights = [];
+
+  for (const image of activeImageHighlights) {
+    image.classList.remove(BLUR_CLASS);
+    image.classList.remove("judol-detector-image");
+    delete image.dataset.judolDetector;
+  }
+
+  activeImageHighlights = [];
+}
+
+function renderImageHighlight(
+  highlight: ImageHighlightDescriptor,
+  blurEnabled: boolean,
+): HTMLImageElement {
+  const { element } = highlight;
+  element.dataset.judolDetector = "image";
+  element.classList.add("judol-detector-image");
+
+  if (blurEnabled) {
+    element.classList.add(BLUR_CLASS);
+  }
+
+  registerTooltipTarget(element, {
+    keyword: highlight.keyword,
+    matchedText: highlight.matchedText,
+    algorithmLabel: highlight.algorithmLabel,
+    occurrences: highlight.occurrences,
+    durationLabel: highlight.durationLabel,
+  });
+
+  return element;
 }
 
 export function renderHighlights(
@@ -128,8 +169,25 @@ export function renderHighlights(
   activeHighlights = created;
 }
 
+export function renderImageHighlights(
+  highlights: ImageHighlightDescriptor[],
+  blurEnabled: boolean,
+): void {
+  const created: HTMLImageElement[] = [];
+
+  for (const highlight of highlights) {
+    created.push(renderImageHighlight(highlight, blurEnabled));
+  }
+
+  activeImageHighlights = created;
+}
+
 export function applyBlurState(blurEnabled: boolean): void {
   for (const highlight of activeHighlights) {
     highlight.classList.toggle(BLUR_CLASS, blurEnabled);
+  }
+
+  for (const image of activeImageHighlights) {
+    image.classList.toggle(BLUR_CLASS, blurEnabled);
   }
 }

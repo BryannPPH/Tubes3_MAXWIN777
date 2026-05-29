@@ -38,7 +38,6 @@ wd cepat
 withdraw cepat
 withdraw kilat
 withdraw otomatis
-rtp
 rtp live
 rtp slot
 rtp gacor

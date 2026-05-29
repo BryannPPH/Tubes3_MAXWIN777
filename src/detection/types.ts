@@ -3,7 +3,8 @@ export type ExactAlgorithmName = "kmp" | "boyer-moore" | "aho-corasick" | "rabin
 export type DetectionAlgorithmName =
   | ExactAlgorithmName
   | "regex"
-  | "weighted-levenshtein";
+  | "weighted-levenshtein"
+  | "ocr";
 
 export interface KeywordEntry {
   id: string;

@@ -77,7 +77,9 @@ function findTooltipTarget(target: EventTarget | null): HTMLElement | null {
     return null;
   }
 
-  const element = target.closest<HTMLElement>("[data-judol-detector='highlight']");
+  const element = target.closest<HTMLElement>(
+    "[data-judol-detector='highlight'], [data-judol-detector='image']",
+  );
   if (element === null) {
     return null;
   }

@@ -18,6 +18,7 @@ const ALGORITHMS: DetectionAlgorithmName[] = [
   "rabin-karp",
   "regex",
   "weighted-levenshtein",
+  "ocr",
 ];
 
 const ALGORITHM_LABELS: Record<DetectionAlgorithmName, string> = {
@@ -27,6 +28,7 @@ const ALGORITHM_LABELS: Record<DetectionAlgorithmName, string> = {
   "rabin-karp": "Rabin-Karp",
   regex: "RegEx",
   "weighted-levenshtein": "Weighted Levenshtein",
+  ocr: "OCR",
 };
 
 function getRequiredElement<TElement extends HTMLElement>(

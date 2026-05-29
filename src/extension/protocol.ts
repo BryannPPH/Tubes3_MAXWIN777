@@ -12,6 +12,7 @@ export interface DetectionCount {
 
 export interface PopupScanSummary {
   scannedAt: number;
+  totalDurationMs: number;
   totalMatches: number;
   uniqueDetections: number;
   algorithmMatches: Record<DetectionAlgorithmName, number>;

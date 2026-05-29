@@ -100,7 +100,7 @@ h2 {
 .metric-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .metric-grid > div {
@@ -120,8 +120,9 @@ h2 {
 }
 
 .metric-grid strong {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 .stack {

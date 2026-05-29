@@ -47,6 +47,7 @@ const rescanButton = getRequiredElement("rescan-button", HTMLButtonElement);
 const blurToggle = getRequiredElement("blur-toggle", HTMLInputElement);
 const totalMatchesElement = getRequiredElement("total-matches", HTMLElement);
 const uniqueDetectionsElement = getRequiredElement("unique-detections", HTMLElement);
+const scanDurationElement = getRequiredElement("scan-duration", HTMLElement);
 const algorithmList = getRequiredElement("algorithm-list", HTMLElement);
 const keywordList = getRequiredElement("keyword-list", HTMLElement);
 const statusText = getRequiredElement("status-text", HTMLElement);
@@ -146,6 +147,7 @@ function renderState(state: PopupScanState): void {
   if (state.status === "error") {
     totalMatchesElement.textContent = "0";
     uniqueDetectionsElement.textContent = "0";
+    scanDurationElement.textContent = "0.00 ms";
     algorithmList.replaceChildren();
     keywordList.replaceChildren();
     setStatus(state.error);
@@ -155,12 +157,14 @@ function renderState(state: PopupScanState): void {
   if (state.status === "idle" || state.summary === null) {
     totalMatchesElement.textContent = "0";
     uniqueDetectionsElement.textContent = "0";
+    scanDurationElement.textContent = "0.00 ms";
     setStatus("Content script belum mengirim hasil scan.");
     return;
   }
 
   totalMatchesElement.textContent = String(state.summary.totalMatches);
   uniqueDetectionsElement.textContent = String(state.summary.uniqueDetections);
+  scanDurationElement.textContent = formatDuration(state.summary.totalDurationMs);
   blurToggle.checked = state.summary.blurred;
   renderAlgorithms(state.summary);
   renderKeywords(state.summary);

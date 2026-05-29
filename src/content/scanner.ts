@@ -8,6 +8,7 @@ import type {
   KeywordEntry,
 } from "../detection/types";
 import type { PopupScanSummary } from "../extension/protocol";
+import { nowMs } from "../utils/clock";
 import { collectTextNodes } from "./domFilters";
 import { describeMatch } from "./matchFormatter";
 import { scanImageKeywords } from "./ocr";
@@ -195,6 +196,7 @@ function formatDuration(durationMs: number): string {
 export async function scanPage(
   blurEnabled: boolean,
 ): Promise<PageScanResult> {
+  const startedAt = nowMs();
   const keywords = await getKeywords();
   const root = document.body;
   const textHighlights: HighlightDescriptor[] = [];
@@ -210,6 +212,7 @@ export async function scanPage(
       imageHighlights,
       summary: {
         scannedAt: Date.now(),
+        totalDurationMs: nowMs() - startedAt,
         totalMatches: 0,
         uniqueDetections: 0,
         algorithmMatches,
@@ -349,6 +352,7 @@ export async function scanPage(
     imageHighlights,
     summary: {
       scannedAt: Date.now(),
+      totalDurationMs: nowMs() - startedAt,
       totalMatches: textHighlights.length + imageHighlights.length,
       uniqueDetections: occurrenceCounts.size,
       algorithmMatches,

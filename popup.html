@@ -7,52 +7,128 @@
   </head>
   <body>
     <main id="judol-popup-root" class="judol-popup">
-      <header class="popup-header">
-        <div>
-          <p class="eyebrow">Judol Detector</p>
-          <h1>Scan DOM</h1>
+      <header class="hero-card">
+        <div class="brand-lockup">
+          <img class="brand-logo" src="/Anita_Max.png" alt="Anita Max" />
+          <h1>Judol Detector</h1>
         </div>
         <button id="rescan-button" class="icon-button" type="button" title="Rescan halaman">
-          R
+          ↻
         </button>
       </header>
 
-      <section class="control-row">
-        <label class="toggle">
-          <input id="blur-toggle" type="checkbox" />
-          <span>Blur teks terdeteksi</span>
-        </label>
+      <section class="surface-card control-card">
+        <div class="section-heading">
+          <div>
+            <h2>Masking</h2>
+            <p class="section-copy">Pilih apakah hasil deteksi diblur atau ditutup cover animasi.</p>
+          </div>
+          <span class="section-badge">Live</span>
+        </div>
+
+        <div class="control-grid">
+          <label class="toggle-pill">
+            <input id="mask-toggle" type="checkbox" />
+            <span>Aktifkan sensor</span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Mode sensor</span>
+            <select id="mask-mode" class="field-input">
+              <option value="blur">Blur</option>
+              <option value="gif">GIF Cover</option>
+            </select>
+          </label>
+
+          <label class="field field-full">
+            <span class="field-label">GIF URL</span>
+            <input
+              id="gif-url"
+              class="field-input"
+              type="url"
+              placeholder="https://example.com/cover.gif"
+            />
+            <span id="gif-help" class="field-help">
+              Kosongkan untuk pakai cover animasi bawaan.
+            </span>
+          </label>
+        </div>
       </section>
 
       <section class="metric-grid" aria-live="polite">
-        <div>
-          <span class="metric-label">Total match</span>
+        <div class="metric-card metric-card-accent">
+          <span class="metric-label">Total Match</span>
           <strong id="total-matches">0</strong>
         </div>
-        <div>
+        <div class="metric-card">
           <span class="metric-label">Unik</span>
           <strong id="unique-detections">0</strong>
         </div>
-        <div>
+        <div class="metric-card">
           <span class="metric-label">Waktu Scan</span>
           <strong id="scan-duration">0.00 ms</strong>
         </div>
       </section>
 
-      <section>
-        <h2>Algoritma</h2>
+      <section class="surface-card">
+        <div class="section-heading">
+          <div>
+            <h2>Algoritma</h2>
+            <p class="section-copy">Distribusi match dan biaya runtime per algoritma.</p>
+          </div>
+          <span id="algorithm-total" class="section-badge">0</span>
+        </div>
         <div id="algorithm-list" class="stack"></div>
       </section>
 
-      <section>
-        <h2>Keyword</h2>
+      <section class="surface-card">
+        <div class="section-heading">
+          <div>
+            <h2>Keyword</h2>
+            <p class="section-copy">Keyword yang paling sering muncul dari seluruh scan aktif.</p>
+          </div>
+          <span id="keyword-total" class="section-badge">0</span>
+        </div>
         <div id="keyword-list" class="stack"></div>
       </section>
 
-      <section>
-        <h2>Debug Scan</h2>
-        <div id="debug-metrics" class="debug-metrics"></div>
-        <div id="debug-list" class="debug-list"></div>
+      <section class="surface-card">
+        <div class="section-heading">
+          <div>
+            <h2>Debug Explorer</h2>
+            <p class="section-copy">Pisahkan hasil scan text dan image, lalu buka yang perlu saja.</p>
+          </div>
+          <span class="section-badge">Debug</span>
+        </div>
+
+        <div class="debug-overview-grid">
+          <div class="debug-overview-card">
+            <span class="debug-overview-label">Text Scan</span>
+            <strong id="debug-text-overview">0 / 0</strong>
+            <p>Kena / Discan</p>
+          </div>
+          <div class="debug-overview-card">
+            <span class="debug-overview-label">Image Scan</span>
+            <strong id="debug-image-overview">0 / 0</strong>
+            <p>Kena / Discan</p>
+          </div>
+        </div>
+
+        <details id="debug-text-panel" class="debug-panel">
+          <summary>
+            <span>Debug Text</span>
+            <span id="debug-text-summary" class="summary-chip">0 item</span>
+          </summary>
+          <div id="debug-text-list" class="debug-list"></div>
+        </details>
+
+        <details id="debug-image-panel" class="debug-panel" open>
+          <summary>
+            <span>Debug Image</span>
+            <span id="debug-image-summary" class="summary-chip">0 item</span>
+          </summary>
+          <div id="debug-image-list" class="debug-list"></div>
+        </details>
       </section>
 
       <p id="status-text" class="status">Menunggu hasil scan.</p>

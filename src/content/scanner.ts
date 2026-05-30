@@ -9,6 +9,7 @@ import type {
 } from "../detection/types";
 import type {
   CaptureVisibleTabMessage,
+  MaskSettings,
   CaptureVisibleTabResponse,
   PopupDebugItem,
   PopupScanSummary,
@@ -475,7 +476,7 @@ function createOcrAlgorithmLabel(matches: DetectionMatchRecord[], captureMethod:
 }
 
 export async function scanPage(
-  blurEnabled: boolean,
+  maskSettings: MaskSettings,
 ): Promise<PageScanResult> {
   const startedAt = nowMs();
   const keywords = await getKeywords();
@@ -504,7 +505,9 @@ export async function scanPage(
         algorithmMatches,
         algorithmDurationsMs,
         detections: [],
-        blurred: blurEnabled,
+        maskEnabled: maskSettings.enabled,
+        maskMode: maskSettings.mode,
+        maskGifUrl: maskSettings.gifUrl,
         debug: {
           scannedTextNodes: 0,
           matchedTextNodes: 0,
@@ -763,7 +766,9 @@ export async function scanPage(
       algorithmMatches,
       algorithmDurationsMs,
       detections: buildDetectionBuckets(occurrenceCounts, occurrenceLabels),
-      blurred: blurEnabled,
+      maskEnabled: maskSettings.enabled,
+      maskMode: maskSettings.mode,
+      maskGifUrl: maskSettings.gifUrl,
       debug: {
         scannedTextNodes: textNodes.length,
         matchedTextNodes: matchedTextNodeCount,

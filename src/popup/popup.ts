@@ -1,16 +1,21 @@
 import "../styles/popup.css";
 import type {
   ContentRequest,
+  MaskSettings,
   PopupDebugItem,
   PopupScanState,
   PopupScanSummary,
 } from "../extension/protocol";
+import {
+  DEFAULT_MASK_SETTINGS,
+  getStoredMaskSettings,
+  setStoredMaskSettings,
+} from "../extension/masking";
 import type { DetectionAlgorithmName } from "../detection/types";
 
 const MESSAGE_GET_SCAN_STATE = "JUDOL_GET_SCAN_STATE";
 const MESSAGE_RESCAN = "JUDOL_RESCAN";
-const MESSAGE_SET_BLUR = "JUDOL_SET_BLUR";
-const BLUR_STORAGE_KEY = "judolDetectorBlurEnabled";
+const MESSAGE_SET_MASK = "JUDOL_SET_MASK";
 
 const ALGORITHMS: DetectionAlgorithmName[] = [
   "kmp",
@@ -45,15 +50,26 @@ function getRequiredElement<TElement extends HTMLElement>(
 }
 
 const rescanButton = getRequiredElement("rescan-button", HTMLButtonElement);
-const blurToggle = getRequiredElement("blur-toggle", HTMLInputElement);
+const maskToggle = getRequiredElement("mask-toggle", HTMLInputElement);
+const maskModeSelect = getRequiredElement("mask-mode", HTMLSelectElement);
+const gifUrlInput = getRequiredElement("gif-url", HTMLInputElement);
+const gifHelp = getRequiredElement("gif-help", HTMLElement);
 const totalMatchesElement = getRequiredElement("total-matches", HTMLElement);
 const uniqueDetectionsElement = getRequiredElement("unique-detections", HTMLElement);
 const scanDurationElement = getRequiredElement("scan-duration", HTMLElement);
+const algorithmTotalElement = getRequiredElement("algorithm-total", HTMLElement);
+const keywordTotalElement = getRequiredElement("keyword-total", HTMLElement);
 const algorithmList = getRequiredElement("algorithm-list", HTMLElement);
 const keywordList = getRequiredElement("keyword-list", HTMLElement);
-const debugMetrics = getRequiredElement("debug-metrics", HTMLElement);
-const debugList = getRequiredElement("debug-list", HTMLElement);
+const debugTextOverview = getRequiredElement("debug-text-overview", HTMLElement);
+const debugImageOverview = getRequiredElement("debug-image-overview", HTMLElement);
+const debugTextSummary = getRequiredElement("debug-text-summary", HTMLElement);
+const debugImageSummary = getRequiredElement("debug-image-summary", HTMLElement);
+const debugTextList = getRequiredElement("debug-text-list", HTMLElement);
+const debugImageList = getRequiredElement("debug-image-list", HTMLElement);
 const statusText = getRequiredElement("status-text", HTMLElement);
+
+let syncingControls = false;
 
 function formatDuration(durationMs: number): string {
   if (durationMs < 0.01) {
@@ -111,6 +127,7 @@ function getMaxAlgorithmCount(summary: PopupScanSummary): number {
 
 function renderAlgorithms(summary: PopupScanSummary): void {
   algorithmList.replaceChildren();
+  algorithmTotalElement.textContent = `${summary.totalMatches} match`;
   const maxCount = getMaxAlgorithmCount(summary);
 
   for (const algorithm of ALGORITHMS) {
@@ -129,6 +146,7 @@ function renderAlgorithms(summary: PopupScanSummary): void {
 
 function renderKeywords(summary: PopupScanSummary): void {
   keywordList.replaceChildren();
+  keywordTotalElement.textContent = `${summary.detections.length} unik`;
 
   if (summary.detections.length === 0) {
     const empty = document.createElement("p");
@@ -144,21 +162,6 @@ function renderKeywords(summary: PopupScanSummary): void {
       createBarRow(detection.label, `${detection.count}x`, detection.count, maxCount),
     );
   }
-}
-
-function createDebugMetricCard(label: string, value: string): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "debug-metric-card";
-
-  const labelElement = document.createElement("span");
-  labelElement.className = "debug-metric-label";
-  labelElement.textContent = label;
-
-  const valueElement = document.createElement("strong");
-  valueElement.textContent = value;
-
-  card.append(labelElement, valueElement);
-  return card;
 }
 
 function createDebugRow(item: PopupDebugItem): HTMLElement {
@@ -208,28 +211,68 @@ function createDebugRow(item: PopupDebugItem): HTMLElement {
   return row;
 }
 
-function renderDebug(summary: PopupScanSummary): void {
-  debugMetrics.replaceChildren();
-  debugList.replaceChildren();
+function renderDebugList(
+  target: HTMLElement,
+  items: PopupDebugItem[],
+  emptyMessage: string,
+): void {
+  target.replaceChildren();
 
-  debugMetrics.append(
-    createDebugMetricCard("Text discan", String(summary.debug.scannedTextNodes)),
-    createDebugMetricCard("Text kena", String(summary.debug.matchedTextNodes)),
-    createDebugMetricCard("Image discan", String(summary.debug.scannedImages)),
-    createDebugMetricCard("Image kena", String(summary.debug.matchedImages)),
-  );
-
-  if (summary.debug.items.length === 0) {
+  if (items.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "Belum ada item debug untuk scan ini.";
-    debugList.appendChild(empty);
+    empty.textContent = emptyMessage;
+    target.appendChild(empty);
     return;
   }
 
-  for (const item of summary.debug.items) {
-    debugList.appendChild(createDebugRow(item));
+  for (const item of items) {
+    target.appendChild(createDebugRow(item));
   }
+}
+
+function renderDebug(summary: PopupScanSummary): void {
+  const textItems = summary.debug.items.filter((item) => item.kind === "text");
+  const imageItems = summary.debug.items.filter((item) => item.kind === "image");
+
+  debugTextOverview.textContent =
+    `${summary.debug.matchedTextNodes} / ${summary.debug.scannedTextNodes}`;
+  debugImageOverview.textContent =
+    `${summary.debug.matchedImages} / ${summary.debug.scannedImages}`;
+  debugTextSummary.textContent = `${textItems.length} item`;
+  debugImageSummary.textContent = `${imageItems.length} item`;
+
+  renderDebugList(
+    debugTextList,
+    textItems,
+    "Belum ada node teks yang terekam untuk scan ini.",
+  );
+  renderDebugList(
+    debugImageList,
+    imageItems,
+    "Belum ada image scan yang terekam untuk scan ini.",
+  );
+}
+
+function syncMaskControls(settings: MaskSettings): void {
+  syncingControls = true;
+  maskToggle.checked = settings.enabled;
+  maskModeSelect.value = settings.mode;
+  gifUrlInput.value = settings.gifUrl;
+  gifUrlInput.disabled = settings.mode !== "gif";
+  gifHelp.textContent =
+    settings.mode === "gif"
+      ? "Kosongkan untuk pakai cover animasi bawaan."
+      : "GIF URL hanya dipakai saat mode sensor = GIF Cover.";
+  syncingControls = false;
+}
+
+function readMaskSettingsFromControls(): MaskSettings {
+  return {
+    enabled: maskToggle.checked,
+    mode: maskModeSelect.value === "gif" ? "gif" : "blur",
+    gifUrl: gifUrlInput.value.trim(),
+  };
 }
 
 function renderState(state: PopupScanState): void {
@@ -237,10 +280,16 @@ function renderState(state: PopupScanState): void {
     totalMatchesElement.textContent = "0";
     uniqueDetectionsElement.textContent = "0";
     scanDurationElement.textContent = "0.00 ms";
+    algorithmTotalElement.textContent = "0";
+    keywordTotalElement.textContent = "0";
     algorithmList.replaceChildren();
     keywordList.replaceChildren();
-    debugMetrics.replaceChildren();
-    debugList.replaceChildren();
+    debugTextList.replaceChildren();
+    debugImageList.replaceChildren();
+    debugTextOverview.textContent = "0 / 0";
+    debugImageOverview.textContent = "0 / 0";
+    debugTextSummary.textContent = "0 item";
+    debugImageSummary.textContent = "0 item";
     setStatus(state.error);
     return;
   }
@@ -249,8 +298,17 @@ function renderState(state: PopupScanState): void {
     totalMatchesElement.textContent = "0";
     uniqueDetectionsElement.textContent = "0";
     scanDurationElement.textContent = "0.00 ms";
-    debugMetrics.replaceChildren();
-    debugList.replaceChildren();
+    algorithmTotalElement.textContent = "0";
+    keywordTotalElement.textContent = "0";
+    algorithmList.replaceChildren();
+    keywordList.replaceChildren();
+    debugTextList.replaceChildren();
+    debugImageList.replaceChildren();
+    debugTextOverview.textContent = "0 / 0";
+    debugImageOverview.textContent = "0 / 0";
+    debugTextSummary.textContent = "0 item";
+    debugImageSummary.textContent = "0 item";
+    syncMaskControls(DEFAULT_MASK_SETTINGS);
     setStatus("Content script belum mengirim hasil scan.");
     return;
   }
@@ -258,7 +316,11 @@ function renderState(state: PopupScanState): void {
   totalMatchesElement.textContent = String(state.summary.totalMatches);
   uniqueDetectionsElement.textContent = String(state.summary.uniqueDetections);
   scanDurationElement.textContent = formatDuration(state.summary.totalDurationMs);
-  blurToggle.checked = state.summary.blurred;
+  syncMaskControls({
+    enabled: state.summary.maskEnabled,
+    mode: state.summary.maskMode,
+    gifUrl: state.summary.maskGifUrl,
+  });
   renderAlgorithms(state.summary);
   renderKeywords(state.summary);
   renderDebug(state.summary);
@@ -292,20 +354,6 @@ async function sendToActiveTab(message: ContentRequest): Promise<PopupScanState>
   });
 }
 
-function getStoredBlurEnabled(): Promise<boolean> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get({ [BLUR_STORAGE_KEY]: false }, (items) => {
-      resolve(items[BLUR_STORAGE_KEY] === true);
-    });
-  });
-}
-
-function setStoredBlurEnabled(enabled: boolean): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [BLUR_STORAGE_KEY]: enabled }, resolve);
-  });
-}
-
 async function refreshState(): Promise<void> {
   try {
     const state = await sendToActiveTab({ type: MESSAGE_GET_SCAN_STATE });
@@ -317,6 +365,18 @@ async function refreshState(): Promise<void> {
       error: error instanceof Error ? error.message : "Gagal mengambil hasil scan.",
     });
   }
+}
+
+async function persistMaskSettings(): Promise<void> {
+  const settings = readMaskSettingsFromControls();
+  await setStoredMaskSettings(settings);
+  const state = await sendToActiveTab({
+    type: MESSAGE_SET_MASK,
+    enabled: settings.enabled,
+    mode: settings.mode,
+    gifUrl: settings.gifUrl,
+  });
+  renderState(state);
 }
 
 rescanButton.addEventListener("click", () => {
@@ -337,18 +397,24 @@ rescanButton.addEventListener("click", () => {
     });
 });
 
-blurToggle.addEventListener("change", () => {
-  const enabled = blurToggle.checked;
-  void setStoredBlurEnabled(enabled)
-    .then(() => sendToActiveTab({ type: MESSAGE_SET_BLUR, enabled }))
-    .then(renderState)
-    .catch((error: unknown) => {
-      setStatus(error instanceof Error ? error.message : "Toggle blur gagal.");
-    });
-});
+function handleMaskControlChange(): void {
+  if (syncingControls) {
+    return;
+  }
 
-void getStoredBlurEnabled()
-  .then((enabled) => {
-    blurToggle.checked = enabled;
+  syncMaskControls(readMaskSettingsFromControls());
+  setStatus("Menyimpan pengaturan masking...");
+  void persistMaskSettings().catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "Pengaturan masking gagal disimpan.");
+  });
+}
+
+maskToggle.addEventListener("change", handleMaskControlChange);
+maskModeSelect.addEventListener("change", handleMaskControlChange);
+gifUrlInput.addEventListener("change", handleMaskControlChange);
+
+void getStoredMaskSettings()
+  .then((settings) => {
+    syncMaskControls(settings);
   })
   .then(refreshState);

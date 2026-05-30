@@ -3,9 +3,16 @@ import type { DetectionAlgorithmName } from "../detection/types";
 export type ContentMessageType =
   | "JUDOL_GET_SCAN_STATE"
   | "JUDOL_RESCAN"
-  | "JUDOL_SET_BLUR";
+  | "JUDOL_SET_MASK";
 
 export type BackgroundMessageType = "JUDOL_CAPTURE_VISIBLE_TAB";
+export type MaskMode = "blur" | "gif";
+
+export interface MaskSettings {
+  enabled: boolean;
+  mode: MaskMode;
+  gifUrl: string;
+}
 
 export interface DetectionCount {
   label: string;
@@ -37,7 +44,9 @@ export interface PopupScanSummary {
   algorithmMatches: Record<DetectionAlgorithmName, number>;
   algorithmDurationsMs: Record<DetectionAlgorithmName, number>;
   detections: DetectionCount[];
-  blurred: boolean;
+  maskEnabled: boolean;
+  maskMode: MaskMode;
+  maskGifUrl: string;
   debug: PopupScanDebug;
 }
 
@@ -66,9 +75,8 @@ export interface RescanMessage {
   type: "JUDOL_RESCAN";
 }
 
-export interface SetBlurMessage {
-  type: "JUDOL_SET_BLUR";
-  enabled: boolean;
+export interface SetMaskMessage extends MaskSettings {
+  type: "JUDOL_SET_MASK";
 }
 
 export interface CaptureVisibleTabMessage {
@@ -88,6 +96,6 @@ export type CaptureVisibleTabResponse =
 export type ContentRequest =
   | GetScanStateMessage
   | RescanMessage
-  | SetBlurMessage;
+  | SetMaskMessage;
 
 export type BackgroundRequest = CaptureVisibleTabMessage;

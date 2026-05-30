@@ -1,28 +1,30 @@
 import type {
   ContentRequest,
+  MaskSettings,
   PopupScanState,
 } from "../extension/protocol";
+import { DEFAULT_MASK_SETTINGS } from "../extension/masking";
 import { injectContentStyles } from "./contentStyles";
 import { isDetectorOwnedNode } from "./domFilters";
 import {
-  applyBlurState,
+  applyMaskState,
   clearHighlights,
   renderHighlights,
   renderImageHighlights,
 } from "./highlighter";
 import {
-  getStoredBlurEnabled,
-  watchStoredBlurEnabled,
-} from "./settings";
+  getStoredMaskSettings,
+  watchStoredMaskSettings,
+} from "../extension/masking";
 import { scanPage } from "./scanner";
 import { initializeTooltip } from "./tooltip";
 
 const MESSAGE_GET_SCAN_STATE = "JUDOL_GET_SCAN_STATE";
 const MESSAGE_RESCAN = "JUDOL_RESCAN";
-const MESSAGE_SET_BLUR = "JUDOL_SET_BLUR";
+const MESSAGE_SET_MASK = "JUDOL_SET_MASK";
 const RESCAN_DEBOUNCE_MS = 700;
 
-let blurEnabled = false;
+let maskSettings: MaskSettings = { ...DEFAULT_MASK_SETTINGS };
 let scanState: PopupScanState = {
   status: "idle",
   summary: null,
@@ -49,7 +51,7 @@ function isContentRequest(message: unknown): message is ContentRequest {
   return (
     candidate.type === MESSAGE_GET_SCAN_STATE ||
     candidate.type === MESSAGE_RESCAN ||
-    candidate.type === MESSAGE_SET_BLUR
+    candidate.type === MESSAGE_SET_MASK
   );
 }
 
@@ -124,16 +126,22 @@ function scheduleRescan(): void {
   }, RESCAN_DEBOUNCE_MS);
 }
 
-function updateBlurState(enabled: boolean): void {
-  blurEnabled = enabled;
-  applyBlurState(blurEnabled);
+function updateMaskSettings(nextSettings: MaskSettings): void {
+  maskSettings = {
+    enabled: nextSettings.enabled,
+    mode: nextSettings.mode,
+    gifUrl: nextSettings.gifUrl,
+  };
+  applyMaskState(maskSettings);
 
   if (scanState.status === "ready") {
     scanState = {
       status: "ready",
       summary: {
         ...scanState.summary,
-        blurred: blurEnabled,
+        maskEnabled: maskSettings.enabled,
+        maskMode: maskSettings.mode,
+        maskGifUrl: maskSettings.gifUrl,
       },
     };
   }
@@ -152,9 +160,9 @@ async function scanAndRender(): Promise<PopupScanState> {
     clearPendingRescan();
     clearHighlights();
 
-    const result = await scanPage(blurEnabled);
-    renderHighlights(result.textHighlights, blurEnabled);
-    renderImageHighlights(result.imageHighlights, blurEnabled);
+    const result = await scanPage(maskSettings);
+    renderHighlights(result.textHighlights, maskSettings);
+    renderImageHighlights(result.imageHighlights, maskSettings);
     scanState = {
       status: "ready",
       summary: result.summary,
@@ -194,8 +202,12 @@ function registerMessageHandlers(): void {
       return false;
     }
 
-    if (message.type === MESSAGE_SET_BLUR) {
-      updateBlurState(message.enabled);
+    if (message.type === MESSAGE_SET_MASK) {
+      updateMaskSettings({
+        enabled: message.enabled,
+        mode: message.mode,
+        gifUrl: message.gifUrl,
+      });
       sendResponse(scanState);
       return false;
     }
@@ -209,8 +221,8 @@ async function initialize(): Promise<void> {
   injectContentStyles();
   initializeTooltip();
   registerMessageHandlers();
-  blurEnabled = await getStoredBlurEnabled();
-  watchStoredBlurEnabled(updateBlurState);
+  updateMaskSettings(await getStoredMaskSettings());
+  watchStoredMaskSettings(updateMaskSettings);
   await scanAndRender();
 }
 

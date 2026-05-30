@@ -7,28 +7,93 @@
   cursor: help;
   outline: 1px solid rgba(177, 119, 0, 0.42);
   padding: 0 0.08em;
+  position: relative;
 }
 
-.judol-detector-image {
+.judol-detector-image-frame {
   cursor: help;
   outline: 2px solid rgba(177, 119, 0, 0.55);
   outline-offset: 2px;
+  position: relative;
+  vertical-align: top;
 }
 
-.judol-detector-image.judol-detector-image-ocr-failed {
+.judol-detector-image-frame.judol-detector-image-ocr-failed {
   outline: 2px dashed rgba(239, 68, 68, 0.88);
   outline-offset: 3px;
 }
 
-.judol-detector-highlight.judol-detector-blurred {
+.judol-detector-image {
+  display: block;
+  max-width: 100%;
+}
+
+.judol-detector-highlight.judol-detector-masked.judol-detector-mask-blur {
   background: rgba(30, 41, 59, 0.18);
   filter: blur(4px);
   text-shadow: 0 0 8px currentColor;
   user-select: none;
 }
 
-.judol-detector-image.judol-detector-blurred {
+.judol-detector-image-frame.judol-detector-masked.judol-detector-mask-blur .judol-detector-image {
   filter: blur(4px);
+}
+
+.judol-detector-highlight.judol-detector-masked.judol-detector-mask-gif {
+  background-image:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.8)),
+    var(
+      --judol-detector-cover-image,
+      linear-gradient(120deg, #f97316 0%, #fb7185 45%, #38bdf8 100%)
+    );
+  background-position: center, 0% 50%;
+  background-size: cover, 240% 240%;
+  border-radius: 4px;
+  color: transparent;
+  text-shadow: none;
+  user-select: none;
+  animation: judol-detector-cover-pan 2.8s linear infinite;
+}
+
+.judol-detector-image-cover {
+  background-image:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.7), rgba(30, 41, 59, 0.5)),
+    var(
+      --judol-detector-cover-image,
+      linear-gradient(120deg, #f97316 0%, #fb7185 45%, #38bdf8 100%)
+    );
+  background-position: center, 0% 50%;
+  background-size: cover, 240% 240%;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 140ms ease;
+}
+
+.judol-detector-image-cover::after {
+  color: rgba(255, 255, 255, 0.96);
+  content: "JUDOL BLOCKED";
+  font: 700 11px/1 "Segoe UI", sans-serif;
+  inset: auto 10px 10px auto;
+  position: absolute;
+  text-transform: uppercase;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.32);
+}
+
+.judol-detector-image-frame.judol-detector-masked.judol-detector-mask-gif .judol-detector-image-cover {
+  animation: judol-detector-cover-pan 2.8s linear infinite;
+  opacity: 1;
+}
+
+@keyframes judol-detector-cover-pan {
+  0% {
+    background-position: center, 0% 50%;
+  }
+
+  100% {
+    background-position: center, 100% 50%;
+  }
 }
 
 .judol-detector-tooltip {

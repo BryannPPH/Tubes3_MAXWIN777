@@ -1,3 +1,4 @@
+import type { MaskSettings } from "../extension/protocol";
 import type {
   HighlightDescriptor,
   ImageHighlightDescriptor,
@@ -8,15 +9,23 @@ import {
 } from "./tooltip";
 
 const HIGHLIGHT_CLASS = "judol-detector-highlight";
-const BLUR_CLASS = "judol-detector-blurred";
+const IMAGE_FRAME_CLASS = "judol-detector-image-frame";
 const IMAGE_CLASS = "judol-detector-image";
+const IMAGE_COVER_CLASS = "judol-detector-image-cover";
 const IMAGE_OCR_FAILED_CLASS = "judol-detector-image-ocr-failed";
+const MASKED_CLASS = "judol-detector-masked";
+const MASK_BLUR_CLASS = "judol-detector-mask-blur";
+const MASK_GIF_CLASS = "judol-detector-mask-gif";
+const COVER_IMAGE_VARIABLE = "--judol-detector-cover-image";
+
+interface ActiveImageHighlight {
+  wrapper: HTMLSpanElement;
+  image: HTMLImageElement;
+  shouldMask: boolean;
+}
 
 let activeHighlights: HTMLElement[] = [];
-let activeImageHighlights: Array<{
-  element: HTMLImageElement;
-  shouldBlur: boolean;
-}> = [];
+let activeImageHighlights: ActiveImageHighlight[] = [];
 
 function groupHighlightsByNode(
   highlights: HighlightDescriptor[],
@@ -36,19 +45,70 @@ function groupHighlightsByNode(
   return groups;
 }
 
+function escapeCssUrl(value: string): string {
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function applyCoverImage(
+  element: HTMLElement,
+  maskMode: MaskSettings["mode"],
+  gifUrl: string,
+): void {
+  if (maskMode === "gif" && gifUrl.trim().length > 0) {
+    element.style.setProperty(
+      COVER_IMAGE_VARIABLE,
+      `url("${escapeCssUrl(gifUrl.trim())}")`,
+    );
+    return;
+  }
+
+  element.style.removeProperty(COVER_IMAGE_VARIABLE);
+}
+
+function applyTextMaskState(
+  element: HTMLElement,
+  maskSettings: MaskSettings,
+): void {
+  const shouldMask = maskSettings.enabled;
+  element.classList.toggle(MASKED_CLASS, shouldMask);
+  element.classList.toggle(
+    MASK_BLUR_CLASS,
+    shouldMask && maskSettings.mode === "blur",
+  );
+  element.classList.toggle(
+    MASK_GIF_CLASS,
+    shouldMask && maskSettings.mode === "gif",
+  );
+  applyCoverImage(element, maskSettings.mode, maskSettings.gifUrl);
+}
+
+function applyImageMaskState(
+  imageHighlight: ActiveImageHighlight,
+  maskSettings: MaskSettings,
+): void {
+  const shouldMask = maskSettings.enabled && imageHighlight.shouldMask;
+  imageHighlight.wrapper.classList.toggle(MASKED_CLASS, shouldMask);
+  imageHighlight.wrapper.classList.toggle(
+    MASK_BLUR_CLASS,
+    shouldMask && maskSettings.mode === "blur",
+  );
+  imageHighlight.wrapper.classList.toggle(
+    MASK_GIF_CLASS,
+    shouldMask && maskSettings.mode === "gif",
+  );
+  applyCoverImage(imageHighlight.wrapper, maskSettings.mode, maskSettings.gifUrl);
+}
+
 function createHighlightElement(
   text: string,
   highlight: HighlightDescriptor,
-  blurEnabled: boolean,
+  maskSettings: MaskSettings,
 ): HTMLElement {
   const element = document.createElement("mark");
   element.className = HIGHLIGHT_CLASS;
   element.dataset.judolDetector = "highlight";
   element.textContent = text;
-
-  if (blurEnabled) {
-    element.classList.add(BLUR_CLASS);
-  }
+  applyTextMaskState(element, maskSettings);
 
   registerTooltipTarget(element, {
     keyword: highlight.keyword,
@@ -64,7 +124,7 @@ function createHighlightElement(
 function renderNodeHighlights(
   node: Text,
   highlights: HighlightDescriptor[],
-  blurEnabled: boolean,
+  maskSettings: MaskSettings,
 ): HTMLElement[] {
   const parent = node.parentNode;
   if (parent === null) {
@@ -89,7 +149,11 @@ function renderNodeHighlights(
     }
 
     const highlightedText = sourceText.slice(highlight.start, highlight.end);
-    const element = createHighlightElement(highlightedText, highlight, blurEnabled);
+    const element = createHighlightElement(
+      highlightedText,
+      highlight,
+      maskSettings,
+    );
     fragment.appendChild(element);
     created.push(element);
     cursor = highlight.end;
@@ -101,6 +165,59 @@ function renderNodeHighlights(
 
   parent.replaceChild(fragment, node);
   return created;
+}
+
+function createImageWrapper(
+  highlight: ImageHighlightDescriptor,
+  maskSettings: MaskSettings,
+): ActiveImageHighlight | null {
+  const { element: image } = highlight;
+  const parent = image.parentNode;
+  if (parent === null) {
+    return null;
+  }
+
+  const wrapper = document.createElement("span");
+  wrapper.className = IMAGE_FRAME_CLASS;
+  wrapper.dataset.judolDetector = "image";
+  wrapper.dataset.judolDetectorRoot = "image-frame";
+
+  const display = window.getComputedStyle(image).display;
+  wrapper.style.display = display === "block" ? "block" : "inline-block";
+
+  if (highlight.variant === "ocr-failed") {
+    wrapper.classList.add(IMAGE_OCR_FAILED_CLASS);
+  }
+
+  const cover = document.createElement("span");
+  cover.className = IMAGE_COVER_CLASS;
+  cover.dataset.judolDetectorRoot = "image-cover";
+  cover.setAttribute("aria-hidden", "true");
+
+  image.classList.add(IMAGE_CLASS);
+  image.dataset.judolDetectorRoot = "image-node";
+
+  parent.replaceChild(wrapper, image);
+  wrapper.append(image, cover);
+
+  const activeImageHighlight: ActiveImageHighlight = {
+    wrapper,
+    image,
+    shouldMask: highlight.shouldBlur,
+  };
+  applyImageMaskState(activeImageHighlight, maskSettings);
+
+  registerTooltipTarget(wrapper, {
+    keyword: highlight.keyword,
+    matchedText: highlight.matchedText,
+    algorithmLabel: highlight.algorithmLabel,
+    occurrences: highlight.occurrences,
+    durationLabel: highlight.durationLabel,
+    noteLabel: highlight.noteLabel,
+    noteValue: highlight.noteValue,
+  });
+
+  return activeImageHighlight;
 }
 
 export function clearHighlights(): void {
@@ -121,58 +238,30 @@ export function clearHighlights(): void {
 
   activeHighlights = [];
 
-  for (const image of activeImageHighlights) {
-    image.element.classList.remove(BLUR_CLASS);
-    image.element.classList.remove(IMAGE_CLASS);
-    image.element.classList.remove(IMAGE_OCR_FAILED_CLASS);
-    delete image.element.dataset.judolDetector;
+  for (const imageHighlight of activeImageHighlights) {
+    const { wrapper, image } = imageHighlight;
+    image.classList.remove(IMAGE_CLASS);
+    image.style.removeProperty(COVER_IMAGE_VARIABLE);
+    delete image.dataset.judolDetectorRoot;
+
+    if (wrapper.parentNode !== null) {
+      wrapper.parentNode.replaceChild(image, wrapper);
+    }
   }
 
   activeImageHighlights = [];
 }
 
-function renderImageHighlight(
-  highlight: ImageHighlightDescriptor,
-  blurEnabled: boolean,
-): { element: HTMLImageElement; shouldBlur: boolean } {
-  const { element } = highlight;
-  element.dataset.judolDetector = "image";
-  element.classList.add(IMAGE_CLASS);
-
-  if (highlight.variant === "ocr-failed") {
-    element.classList.add(IMAGE_OCR_FAILED_CLASS);
-  }
-
-  if (blurEnabled && highlight.shouldBlur) {
-    element.classList.add(BLUR_CLASS);
-  }
-
-  registerTooltipTarget(element, {
-    keyword: highlight.keyword,
-    matchedText: highlight.matchedText,
-    algorithmLabel: highlight.algorithmLabel,
-    occurrences: highlight.occurrences,
-    durationLabel: highlight.durationLabel,
-    noteLabel: highlight.noteLabel,
-    noteValue: highlight.noteValue,
-  });
-
-  return {
-    element,
-    shouldBlur: highlight.shouldBlur,
-  };
-}
-
 export function renderHighlights(
   highlights: HighlightDescriptor[],
-  blurEnabled: boolean,
+  maskSettings: MaskSettings,
 ): void {
   clearHighlights();
   const groups = groupHighlightsByNode(highlights);
   const created: HTMLElement[] = [];
 
   for (const [node, nodeHighlights] of groups.entries()) {
-    created.push(...renderNodeHighlights(node, nodeHighlights, blurEnabled));
+    created.push(...renderNodeHighlights(node, nodeHighlights, maskSettings));
   }
 
   activeHighlights = created;
@@ -180,23 +269,26 @@ export function renderHighlights(
 
 export function renderImageHighlights(
   highlights: ImageHighlightDescriptor[],
-  blurEnabled: boolean,
+  maskSettings: MaskSettings,
 ): void {
-  const created: Array<{ element: HTMLImageElement; shouldBlur: boolean }> = [];
+  const created: ActiveImageHighlight[] = [];
 
   for (const highlight of highlights) {
-    created.push(renderImageHighlight(highlight, blurEnabled));
+    const wrappedImage = createImageWrapper(highlight, maskSettings);
+    if (wrappedImage !== null) {
+      created.push(wrappedImage);
+    }
   }
 
   activeImageHighlights = created;
 }
 
-export function applyBlurState(blurEnabled: boolean): void {
+export function applyMaskState(maskSettings: MaskSettings): void {
   for (const highlight of activeHighlights) {
-    highlight.classList.toggle(BLUR_CLASS, blurEnabled);
+    applyTextMaskState(highlight, maskSettings);
   }
 
-  for (const image of activeImageHighlights) {
-    image.element.classList.toggle(BLUR_CLASS, blurEnabled && image.shouldBlur);
+  for (const imageHighlight of activeImageHighlights) {
+    applyImageMaskState(imageHighlight, maskSettings);
   }
 }

@@ -119,15 +119,14 @@ export function searchWithAhoCorasick(
       currentNode = root;
     }
 
-    // Check if current node marks end of any patterns
-    if (currentNode.isEndOfPattern) {
-      for (const pattern of currentNode.patterns) {
-        matches.push({
-          pattern,
-          position: position - pattern.length + 1,
-          length: pattern.length,
-        });
-      }
+    // Emit every pattern attached to the active state, including those
+    // inherited through failure links.
+    for (const pattern of currentNode.patterns) {
+      matches.push({
+        pattern,
+        position: position - pattern.length + 1,
+        length: pattern.length,
+      });
     }
   }
 

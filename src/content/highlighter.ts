@@ -22,9 +22,15 @@ interface ActiveImageHighlight {
   wrapper: HTMLSpanElement;
   image: HTMLImageElement;
   shouldMask: boolean;
+  coverImageUrl: string;
 }
 
-let activeHighlights: HTMLElement[] = [];
+interface ActiveTextHighlight {
+  element: HTMLElement;
+  coverImageUrl: string;
+}
+
+let activeHighlights: ActiveTextHighlight[] = [];
 let activeImageHighlights: ActiveImageHighlight[] = [];
 
 function groupHighlightsByNode(
@@ -51,13 +57,12 @@ function escapeCssUrl(value: string): string {
 
 function applyCoverImage(
   element: HTMLElement,
-  maskMode: MaskSettings["mode"],
-  gifUrl: string,
+  coverImageUrl: string,
 ): void {
-  if (maskMode === "gif" && gifUrl.trim().length > 0) {
+  if (coverImageUrl.trim().length > 0) {
     element.style.setProperty(
       COVER_IMAGE_VARIABLE,
-      `url("${escapeCssUrl(gifUrl.trim())}")`,
+      `url("${escapeCssUrl(coverImageUrl.trim())}")`,
     );
     return;
   }
@@ -65,21 +70,40 @@ function applyCoverImage(
   element.style.removeProperty(COVER_IMAGE_VARIABLE);
 }
 
+function pickRandomCoverImage(maskSettings: MaskSettings): string {
+  const pool =
+    maskSettings.gifPool.length > 0
+      ? maskSettings.gifPool
+      : maskSettings.gifUrl.trim().length > 0
+        ? [maskSettings.gifUrl.trim()]
+        : [];
+
+  if (pool.length === 0) {
+    return "";
+  }
+
+  const index = Math.floor(Math.random() * pool.length);
+  return pool[index] ?? "";
+}
+
 function applyTextMaskState(
-  element: HTMLElement,
+  highlight: ActiveTextHighlight,
   maskSettings: MaskSettings,
 ): void {
   const shouldMask = maskSettings.enabled;
-  element.classList.toggle(MASKED_CLASS, shouldMask);
-  element.classList.toggle(
+  highlight.element.classList.toggle(MASKED_CLASS, shouldMask);
+  highlight.element.classList.toggle(
     MASK_BLUR_CLASS,
     shouldMask && maskSettings.mode === "blur",
   );
-  element.classList.toggle(
+  highlight.element.classList.toggle(
     MASK_GIF_CLASS,
     shouldMask && maskSettings.mode === "gif",
   );
-  applyCoverImage(element, maskSettings.mode, maskSettings.gifUrl);
+  if (maskSettings.mode === "gif") {
+    highlight.coverImageUrl = pickRandomCoverImage(maskSettings);
+  }
+  applyCoverImage(highlight.element, highlight.coverImageUrl);
 }
 
 function applyImageMaskState(
@@ -96,19 +120,27 @@ function applyImageMaskState(
     MASK_GIF_CLASS,
     shouldMask && maskSettings.mode === "gif",
   );
-  applyCoverImage(imageHighlight.wrapper, maskSettings.mode, maskSettings.gifUrl);
+  if (maskSettings.mode === "gif") {
+    imageHighlight.coverImageUrl = pickRandomCoverImage(maskSettings);
+  }
+  applyCoverImage(imageHighlight.wrapper, imageHighlight.coverImageUrl);
 }
 
 function createHighlightElement(
   text: string,
   highlight: HighlightDescriptor,
   maskSettings: MaskSettings,
-): HTMLElement {
+): ActiveTextHighlight {
   const element = document.createElement("mark");
   element.className = HIGHLIGHT_CLASS;
   element.dataset.judolDetector = "highlight";
   element.textContent = text;
-  applyTextMaskState(element, maskSettings);
+
+  const activeHighlight: ActiveTextHighlight = {
+    element,
+    coverImageUrl: pickRandomCoverImage(maskSettings),
+  };
+  applyTextMaskState(activeHighlight, maskSettings);
 
   registerTooltipTarget(element, {
     keyword: highlight.keyword,
@@ -118,14 +150,14 @@ function createHighlightElement(
     durationLabel: highlight.durationLabel,
   });
 
-  return element;
+  return activeHighlight;
 }
 
 function renderNodeHighlights(
   node: Text,
   highlights: HighlightDescriptor[],
   maskSettings: MaskSettings,
-): HTMLElement[] {
+): ActiveTextHighlight[] {
   const parent = node.parentNode;
   if (parent === null) {
     return [];
@@ -134,7 +166,7 @@ function renderNodeHighlights(
   const sourceText = node.data;
   const ordered = [...highlights].sort((left, right) => left.start - right.start);
   const fragment = document.createDocumentFragment();
-  const created: HTMLElement[] = [];
+  const created: ActiveTextHighlight[] = [];
   let cursor = 0;
 
   for (const highlight of ordered) {
@@ -149,13 +181,13 @@ function renderNodeHighlights(
     }
 
     const highlightedText = sourceText.slice(highlight.start, highlight.end);
-    const element = createHighlightElement(
+    const activeHighlight = createHighlightElement(
       highlightedText,
       highlight,
       maskSettings,
     );
-    fragment.appendChild(element);
-    created.push(element);
+    fragment.appendChild(activeHighlight.element);
+    created.push(activeHighlight);
     cursor = highlight.end;
   }
 
@@ -204,6 +236,7 @@ function createImageWrapper(
     wrapper,
     image,
     shouldMask: highlight.shouldBlur,
+    coverImageUrl: pickRandomCoverImage(maskSettings),
   };
   applyImageMaskState(activeImageHighlight, maskSettings);
 
@@ -224,14 +257,14 @@ export function clearHighlights(): void {
   resetTooltipTargets();
 
   for (const highlight of activeHighlights) {
-    const parent = highlight.parentNode;
+    const parent = highlight.element.parentNode;
     if (parent === null) {
       continue;
     }
 
     parent.replaceChild(
-      document.createTextNode(highlight.textContent ?? ""),
-      highlight,
+      document.createTextNode(highlight.element.textContent ?? ""),
+      highlight.element,
     );
     parent.normalize();
   }
@@ -241,8 +274,8 @@ export function clearHighlights(): void {
   for (const imageHighlight of activeImageHighlights) {
     const { wrapper, image } = imageHighlight;
     image.classList.remove(IMAGE_CLASS);
-    image.style.removeProperty(COVER_IMAGE_VARIABLE);
     delete image.dataset.judolDetectorRoot;
+    wrapper.style.removeProperty(COVER_IMAGE_VARIABLE);
 
     if (wrapper.parentNode !== null) {
       wrapper.parentNode.replaceChild(image, wrapper);
@@ -258,7 +291,7 @@ export function renderHighlights(
 ): void {
   clearHighlights();
   const groups = groupHighlightsByNode(highlights);
-  const created: HTMLElement[] = [];
+  const created: ActiveTextHighlight[] = [];
 
   for (const [node, nodeHighlights] of groups.entries()) {
     created.push(...renderNodeHighlights(node, nodeHighlights, maskSettings));

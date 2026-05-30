@@ -508,6 +508,7 @@ export async function scanPage(
         maskEnabled: maskSettings.enabled,
         maskMode: maskSettings.mode,
         maskGifUrl: maskSettings.gifUrl,
+        maskGifPreset: maskSettings.gifPreset,
         debug: {
           scannedTextNodes: 0,
           matchedTextNodes: 0,
@@ -769,6 +770,7 @@ export async function scanPage(
       maskEnabled: maskSettings.enabled,
       maskMode: maskSettings.mode,
       maskGifUrl: maskSettings.gifUrl,
+      maskGifPreset: maskSettings.gifPreset,
       debug: {
         scannedTextNodes: textNodes.length,
         matchedTextNodes: matchedTextNodeCount,

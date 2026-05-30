@@ -5,13 +5,18 @@ export type ContentMessageType =
   | "JUDOL_RESCAN"
   | "JUDOL_SET_MASK";
 
-export type BackgroundMessageType = "JUDOL_CAPTURE_VISIBLE_TAB";
+export type BackgroundMessageType =
+  | "JUDOL_CAPTURE_VISIBLE_TAB"
+  | "JUDOL_RESOLVE_GIF_COLLECTION";
 export type MaskMode = "blur" | "gif";
+export type GifPreset = "custom" | "drake" | "ishowspeed";
 
 export interface MaskSettings {
   enabled: boolean;
   mode: MaskMode;
   gifUrl: string;
+  gifPreset: GifPreset;
+  gifPool: string[];
 }
 
 export interface DetectionCount {
@@ -47,6 +52,7 @@ export interface PopupScanSummary {
   maskEnabled: boolean;
   maskMode: MaskMode;
   maskGifUrl: string;
+  maskGifPreset: GifPreset;
   debug: PopupScanDebug;
 }
 
@@ -83,10 +89,25 @@ export interface CaptureVisibleTabMessage {
   type: "JUDOL_CAPTURE_VISIBLE_TAB";
 }
 
+export interface ResolveGifCollectionMessage {
+  type: "JUDOL_RESOLVE_GIF_COLLECTION";
+  preset: Exclude<GifPreset, "custom">;
+}
+
 export type CaptureVisibleTabResponse =
   | {
       ok: true;
       dataUrl: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export type ResolveGifCollectionResponse =
+  | {
+      ok: true;
+      gifUrls: string[];
     }
   | {
       ok: false;
@@ -98,4 +119,6 @@ export type ContentRequest =
   | RescanMessage
   | SetMaskMessage;
 
-export type BackgroundRequest = CaptureVisibleTabMessage;
+export type BackgroundRequest =
+  | CaptureVisibleTabMessage
+  | ResolveGifCollectionMessage;

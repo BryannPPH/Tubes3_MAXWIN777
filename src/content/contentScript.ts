@@ -131,6 +131,8 @@ function updateMaskSettings(nextSettings: MaskSettings): void {
     enabled: nextSettings.enabled,
     mode: nextSettings.mode,
     gifUrl: nextSettings.gifUrl,
+    gifPreset: nextSettings.gifPreset,
+    gifPool: nextSettings.gifPool,
   };
   applyMaskState(maskSettings);
 
@@ -142,6 +144,7 @@ function updateMaskSettings(nextSettings: MaskSettings): void {
         maskEnabled: maskSettings.enabled,
         maskMode: maskSettings.mode,
         maskGifUrl: maskSettings.gifUrl,
+        maskGifPreset: maskSettings.gifPreset,
       },
     };
   }
@@ -207,6 +210,8 @@ function registerMessageHandlers(): void {
         enabled: message.enabled,
         mode: message.mode,
         gifUrl: message.gifUrl,
+        gifPreset: message.gifPreset,
+        gifPool: message.gifPool,
       });
       sendResponse(scanState);
       return false;

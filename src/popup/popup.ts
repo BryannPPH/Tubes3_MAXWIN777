@@ -1,10 +1,12 @@
 import "../styles/popup.css";
 import type {
   ContentRequest,
+  GifPreset,
   MaskSettings,
   PopupDebugItem,
   PopupScanState,
   PopupScanSummary,
+  ResolveGifCollectionResponse,
 } from "../extension/protocol";
 import {
   DEFAULT_MASK_SETTINGS,
@@ -16,6 +18,7 @@ import type { DetectionAlgorithmName } from "../detection/types";
 const MESSAGE_GET_SCAN_STATE = "JUDOL_GET_SCAN_STATE";
 const MESSAGE_RESCAN = "JUDOL_RESCAN";
 const MESSAGE_SET_MASK = "JUDOL_SET_MASK";
+const MESSAGE_RESOLVE_GIF_COLLECTION = "JUDOL_RESOLVE_GIF_COLLECTION";
 
 const ALGORITHMS: DetectionAlgorithmName[] = [
   "kmp",
@@ -52,6 +55,7 @@ function getRequiredElement<TElement extends HTMLElement>(
 const rescanButton = getRequiredElement("rescan-button", HTMLButtonElement);
 const maskToggle = getRequiredElement("mask-toggle", HTMLInputElement);
 const maskModeSelect = getRequiredElement("mask-mode", HTMLSelectElement);
+const gifPresetSelect = getRequiredElement("gif-preset", HTMLSelectElement);
 const gifUrlInput = getRequiredElement("gif-url", HTMLInputElement);
 const gifHelp = getRequiredElement("gif-help", HTMLElement);
 const totalMatchesElement = getRequiredElement("total-matches", HTMLElement);
@@ -258,21 +262,39 @@ function syncMaskControls(settings: MaskSettings): void {
   syncingControls = true;
   maskToggle.checked = settings.enabled;
   maskModeSelect.value = settings.mode;
+  gifPresetSelect.value = settings.gifPreset;
   gifUrlInput.value = settings.gifUrl;
-  gifUrlInput.disabled = settings.mode !== "gif";
-  gifHelp.textContent =
-    settings.mode === "gif"
+  const gifModeActive = settings.mode === "gif";
+  const customPreset = settings.gifPreset === "custom";
+  gifPresetSelect.disabled = !gifModeActive;
+  gifUrlInput.disabled = !gifModeActive || !customPreset;
+  gifHelp.textContent = !gifModeActive
+    ? "GIF preset dan URL hanya dipakai saat mode sensor = GIF Cover."
+    : customPreset
       ? "Kosongkan untuk pakai cover animasi bawaan."
-      : "GIF URL hanya dipakai saat mode sensor = GIF Cover.";
+      : `Random dari preset ${settings.gifPreset === "drake" ? "Drake" : "IShowSpeed"}.`;
   syncingControls = false;
 }
 
 function readMaskSettingsFromControls(): MaskSettings {
+  const gifPreset = normalizeGifPreset(gifPresetSelect.value);
+  const gifUrl = gifUrlInput.value.trim();
+
   return {
     enabled: maskToggle.checked,
     mode: maskModeSelect.value === "gif" ? "gif" : "blur",
-    gifUrl: gifUrlInput.value.trim(),
+    gifUrl,
+    gifPreset,
+    gifPool: gifPreset === "custom" && gifUrl.length > 0 ? [gifUrl] : [],
   };
+}
+
+function normalizeGifPreset(value: string): GifPreset {
+  if (value === "drake" || value === "ishowspeed") {
+    return value;
+  }
+
+  return "custom";
 }
 
 function renderState(state: PopupScanState): void {
@@ -320,6 +342,8 @@ function renderState(state: PopupScanState): void {
     enabled: state.summary.maskEnabled,
     mode: state.summary.maskMode,
     gifUrl: state.summary.maskGifUrl,
+    gifPreset: state.summary.maskGifPreset,
+    gifPool: [],
   });
   renderAlgorithms(state.summary);
   renderKeywords(state.summary);
@@ -354,6 +378,26 @@ async function sendToActiveTab(message: ContentRequest): Promise<PopupScanState>
   });
 }
 
+function sendToBackground(
+  message:
+    | {
+        type: "JUDOL_RESOLVE_GIF_COLLECTION";
+        preset: Exclude<GifPreset, "custom">;
+      },
+): Promise<ResolveGifCollectionResponse> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      const error = chrome.runtime.lastError;
+      if (error !== undefined) {
+        reject(new Error(error.message ?? "Background worker tidak tersedia."));
+        return;
+      }
+
+      resolve(response as ResolveGifCollectionResponse);
+    });
+  });
+}
+
 async function refreshState(): Promise<void> {
   try {
     const state = await sendToActiveTab({ type: MESSAGE_GET_SCAN_STATE });
@@ -369,12 +413,28 @@ async function refreshState(): Promise<void> {
 
 async function persistMaskSettings(): Promise<void> {
   const settings = readMaskSettingsFromControls();
+
+  if (settings.mode === "gif" && settings.gifPreset !== "custom") {
+    const resolved = await sendToBackground({
+      type: MESSAGE_RESOLVE_GIF_COLLECTION,
+      preset: settings.gifPreset,
+    });
+
+    if (!resolved.ok) {
+      throw new Error(resolved.error);
+    }
+
+    settings.gifPool = resolved.gifUrls;
+  }
+
   await setStoredMaskSettings(settings);
   const state = await sendToActiveTab({
     type: MESSAGE_SET_MASK,
     enabled: settings.enabled,
     mode: settings.mode,
     gifUrl: settings.gifUrl,
+    gifPreset: settings.gifPreset,
+    gifPool: settings.gifPool,
   });
   renderState(state);
 }
@@ -411,6 +471,7 @@ function handleMaskControlChange(): void {
 
 maskToggle.addEventListener("change", handleMaskControlChange);
 maskModeSelect.addEventListener("change", handleMaskControlChange);
+gifPresetSelect.addEventListener("change", handleMaskControlChange);
 gifUrlInput.addEventListener("change", handleMaskControlChange);
 
 void getStoredMaskSettings()

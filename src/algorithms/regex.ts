@@ -11,6 +11,60 @@ const TRAILING_JUDOL_DIGITS_PATTERN =
   /^(?<core>[\p{L}\p{N}_-]*[\p{L}\p{M}][\p{L}\p{N}_-]*?)\d{2,3}$/u;
 
 const WHITESPACE_SEPARATOR_PATTERN = /^\s+$/u;
+const LETTER_PATTERN = /\p{L}/u;
+
+const BENIGN_NUMERIC_PREFIXES = new Set([
+  "bab",
+  "di",
+  "hal",
+  "ke",
+  "no",
+  "pasal",
+  "rt",
+  "rw",
+  "ayat",
+]);
+
+const SUSPICIOUS_JUDOL_FRAGMENTS = [
+  "slot",
+  "gacor",
+  "maxwin",
+  "scatter",
+  "jackpot",
+  "bonus",
+  "deposit",
+  "depo",
+  "withdraw",
+  "wd",
+  "rtp",
+  "judi",
+  "casino",
+  "togel",
+  "toto",
+  "bet",
+  "spin",
+  "qq",
+  "qiu",
+  "parlay",
+  "poker",
+  "domino",
+  "bandar",
+  "agen",
+  "hoki",
+  "cuan",
+  "mahjong",
+  "olympus",
+  "zeus",
+  "pragmatic",
+  "habanero",
+  "joker",
+  "microgaming",
+  "spade",
+  "free",
+  "claim",
+  "draw",
+  "live",
+];
 
 // Gambling numbers: explicitly match only 88 and 777
 const GAMBLING_NUMBER_PATTERN = /(?<![\p{L}\p{N}_-])(?<candidate>(?:88|777))(?![\p{L}\p{N}_-])/gu;
@@ -23,6 +77,66 @@ function getFuzzyComparableValue(candidate: string): string {
   }
 
   return candidate;
+}
+
+function extractLetterCore(value: string): string {
+  let lettersOnly = "";
+  const canonical = value.normalize("NFKD").toLocaleLowerCase("en-US");
+
+  for (const character of canonical) {
+    if (LETTER_PATTERN.test(character)) {
+      lettersOnly += character;
+    }
+  }
+
+  return lettersOnly;
+}
+
+function hasSuspiciousJudolFragment(value: string): boolean {
+  for (const fragment of SUSPICIOUS_JUDOL_FRAGMENTS) {
+    if (containsPattern(value, fragment)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldSkipGenericNumericCandidate(candidate: string): boolean {
+  const matchedCore = candidate.match(TRAILING_JUDOL_DIGITS_PATTERN)?.groups?.core;
+
+  if (matchedCore === undefined || matchedCore.length === 0) {
+    return false;
+  }
+
+  const loweredCore = matchedCore.toLocaleLowerCase("en-US");
+  const lettersOnlyCore = extractLetterCore(loweredCore);
+
+  if (lettersOnlyCore.length > 0 && BENIGN_NUMERIC_PREFIXES.has(lettersOnlyCore)) {
+    return true;
+  }
+
+  if (/[-_]/u.test(loweredCore)) {
+    const leadingSegment = loweredCore.split(/[-_]+/u)[0] ?? "";
+    const leadingLetters = extractLetterCore(leadingSegment);
+
+    if (
+      leadingLetters.length > 0 &&
+      leadingLetters.length <= 2 &&
+      hasSuspiciousJudolFragment(leadingLetters) === false
+    ) {
+      return true;
+    }
+  }
+
+  if (
+    lettersOnlyCore.length >= 10 &&
+    hasSuspiciousJudolFragment(lettersOnlyCore) === false
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 interface CandidateToken {
@@ -168,6 +282,11 @@ export function scanWithRegex(text: string): RegexMatchRecord[] {
     // Skip tokens that are currency amounts
     const lowered = matchedText.toLowerCase();
     if (/^(rp|idr)\d+/i.test(lowered)) {
+      match = JUDOL_REGEX_PATTERN.exec(text);
+      continue;
+    }
+
+    if (shouldSkipGenericNumericCandidate(matchedText)) {
       match = JUDOL_REGEX_PATTERN.exec(text);
       continue;
     }

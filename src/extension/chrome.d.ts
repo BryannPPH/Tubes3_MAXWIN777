@@ -22,6 +22,7 @@ interface ChromeRuntimeApi {
       sendResponse: (response?: unknown) => void,
     ) => boolean | void
   >;
+  sendMessage(message: unknown, callback?: (response: unknown) => void): void;
 }
 
 interface ChromeStorageChange {
@@ -50,6 +51,11 @@ interface ChromeTab {
 
 interface ChromeTabsApi {
   query(queryInfo: Record<string, unknown>, callback: (tabs: ChromeTab[]) => void): void;
+  captureVisibleTab(
+    windowId: number | undefined,
+    options: Record<string, unknown>,
+    callback: (dataUrl?: string) => void,
+  ): void;
   sendMessage(
     tabId: number,
     message: unknown,

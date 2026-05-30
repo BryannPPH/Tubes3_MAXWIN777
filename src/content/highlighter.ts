@@ -1,4 +1,7 @@
-import type { HighlightDescriptor } from "./scanner";
+import type {
+  HighlightDescriptor,
+  ImageHighlightDescriptor,
+} from "./scanner";
 import {
   registerTooltipTarget,
   resetTooltipTargets,
@@ -6,18 +9,14 @@ import {
 
 const HIGHLIGHT_CLASS = "judol-detector-highlight";
 const BLUR_CLASS = "judol-detector-blurred";
+const IMAGE_CLASS = "judol-detector-image";
+const IMAGE_OCR_FAILED_CLASS = "judol-detector-image-ocr-failed";
 
 let activeHighlights: HTMLElement[] = [];
-let activeImageHighlights: HTMLImageElement[] = [];
-
-export interface ImageHighlightDescriptor {
+let activeImageHighlights: Array<{
   element: HTMLImageElement;
-  keyword: string;
-  matchedText: string;
-  algorithmLabel: string;
-  durationLabel: string;
-  occurrences: number;
-}
+  shouldBlur: boolean;
+}> = [];
 
 function groupHighlightsByNode(
   highlights: HighlightDescriptor[],
@@ -123,9 +122,10 @@ export function clearHighlights(): void {
   activeHighlights = [];
 
   for (const image of activeImageHighlights) {
-    image.classList.remove(BLUR_CLASS);
-    image.classList.remove("judol-detector-image");
-    delete image.dataset.judolDetector;
+    image.element.classList.remove(BLUR_CLASS);
+    image.element.classList.remove(IMAGE_CLASS);
+    image.element.classList.remove(IMAGE_OCR_FAILED_CLASS);
+    delete image.element.dataset.judolDetector;
   }
 
   activeImageHighlights = [];
@@ -134,12 +134,16 @@ export function clearHighlights(): void {
 function renderImageHighlight(
   highlight: ImageHighlightDescriptor,
   blurEnabled: boolean,
-): HTMLImageElement {
+): { element: HTMLImageElement; shouldBlur: boolean } {
   const { element } = highlight;
   element.dataset.judolDetector = "image";
-  element.classList.add("judol-detector-image");
+  element.classList.add(IMAGE_CLASS);
 
-  if (blurEnabled) {
+  if (highlight.variant === "ocr-failed") {
+    element.classList.add(IMAGE_OCR_FAILED_CLASS);
+  }
+
+  if (blurEnabled && highlight.shouldBlur) {
     element.classList.add(BLUR_CLASS);
   }
 
@@ -149,9 +153,14 @@ function renderImageHighlight(
     algorithmLabel: highlight.algorithmLabel,
     occurrences: highlight.occurrences,
     durationLabel: highlight.durationLabel,
+    noteLabel: highlight.noteLabel,
+    noteValue: highlight.noteValue,
   });
 
-  return element;
+  return {
+    element,
+    shouldBlur: highlight.shouldBlur,
+  };
 }
 
 export function renderHighlights(
@@ -173,7 +182,7 @@ export function renderImageHighlights(
   highlights: ImageHighlightDescriptor[],
   blurEnabled: boolean,
 ): void {
-  const created: HTMLImageElement[] = [];
+  const created: Array<{ element: HTMLImageElement; shouldBlur: boolean }> = [];
 
   for (const highlight of highlights) {
     created.push(renderImageHighlight(highlight, blurEnabled));
@@ -188,6 +197,6 @@ export function applyBlurState(blurEnabled: boolean): void {
   }
 
   for (const image of activeImageHighlights) {
-    image.classList.toggle(BLUR_CLASS, blurEnabled);
+    image.element.classList.toggle(BLUR_CLASS, blurEnabled && image.shouldBlur);
   }
 }

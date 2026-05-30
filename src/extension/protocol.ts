@@ -5,9 +5,28 @@ export type ContentMessageType =
   | "JUDOL_RESCAN"
   | "JUDOL_SET_BLUR";
 
+export type BackgroundMessageType = "JUDOL_CAPTURE_VISIBLE_TAB";
+
 export interface DetectionCount {
   label: string;
   count: number;
+}
+
+export interface PopupDebugItem {
+  kind: "text" | "image";
+  title: string;
+  status: string;
+  detail: string;
+  note?: string;
+  meta?: string[];
+}
+
+export interface PopupScanDebug {
+  scannedTextNodes: number;
+  matchedTextNodes: number;
+  scannedImages: number;
+  matchedImages: number;
+  items: PopupDebugItem[];
 }
 
 export interface PopupScanSummary {
@@ -19,6 +38,7 @@ export interface PopupScanSummary {
   algorithmDurationsMs: Record<DetectionAlgorithmName, number>;
   detections: DetectionCount[];
   blurred: boolean;
+  debug: PopupScanDebug;
 }
 
 export type PopupScanState =
@@ -51,7 +71,23 @@ export interface SetBlurMessage {
   enabled: boolean;
 }
 
+export interface CaptureVisibleTabMessage {
+  type: "JUDOL_CAPTURE_VISIBLE_TAB";
+}
+
+export type CaptureVisibleTabResponse =
+  | {
+      ok: true;
+      dataUrl: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
 export type ContentRequest =
   | GetScanStateMessage
   | RescanMessage
   | SetBlurMessage;
+
+export type BackgroundRequest = CaptureVisibleTabMessage;

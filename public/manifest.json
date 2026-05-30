@@ -20,6 +20,9 @@
       "128": "Anita_Max.png"
     }
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

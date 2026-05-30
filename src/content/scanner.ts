@@ -7,11 +7,21 @@ import type {
   DetectionMatchRecord,
   KeywordEntry,
 } from "../detection/types";
-import type { PopupScanSummary } from "../extension/protocol";
+import type {
+  CaptureVisibleTabMessage,
+  CaptureVisibleTabResponse,
+  PopupDebugItem,
+  PopupScanSummary,
+} from "../extension/protocol";
 import { nowMs } from "../utils/clock";
 import { collectTextNodes } from "./domFilters";
 import { collectContainedPatterns } from "../utils/manualSearch";
-import { describeMatch, formatAlgorithmName } from "./matchFormatter";
+import {
+  describeMatch,
+  formatAlgorithmName,
+  getMatchAlgorithms,
+  getMatchKeyword,
+} from "./matchFormatter";
 import { scanImageKeywords } from "./ocr";
 
 export interface HighlightDescriptor {
@@ -39,6 +49,10 @@ export interface ImageHighlightDescriptor {
   occurrenceKey: string;
   occurrences: number;
   priority: number;
+  shouldBlur: boolean;
+  variant: "match" | "ocr-failed";
+  noteLabel?: string;
+  noteValue?: string;
 }
 
 export interface PageScanResult {
@@ -56,6 +70,11 @@ const ALGORITHMS: DetectionAlgorithmName[] = [
   "weighted-levenshtein",
   "ocr",
 ];
+
+const PREVIEW_IMAGE_MIN_WIDTH_PX = 280;
+const PREVIEW_IMAGE_MIN_HEIGHT_PX = 280;
+const PREVIEW_IMAGE_MIN_VIEWPORT_RATIO = 0.08;
+const MESSAGE_CAPTURE_VISIBLE_TAB = "JUDOL_CAPTURE_VISIBLE_TAB";
 
 let keywordCache: Promise<KeywordEntry[]> | null = null;
 
@@ -243,6 +262,42 @@ function isVisibleImage(image: HTMLImageElement): boolean {
   return style.display !== "none" && style.visibility !== "hidden";
 }
 
+function getImageDisplayArea(image: HTMLImageElement): number {
+  const rect = image.getBoundingClientRect();
+  return Math.max(0, rect.width) * Math.max(0, rect.height);
+}
+
+function isLargePreviewImage(image: HTMLImageElement): boolean {
+  const rect = image.getBoundingClientRect();
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  const displayArea = getImageDisplayArea(image);
+
+  return (
+    rect.width >= PREVIEW_IMAGE_MIN_WIDTH_PX &&
+    rect.height >= PREVIEW_IMAGE_MIN_HEIGHT_PX &&
+    displayArea / viewportArea >= PREVIEW_IMAGE_MIN_VIEWPORT_RATIO
+  );
+}
+
+function collectScannableImages(root: HTMLElement): HTMLImageElement[] {
+  const visibleImages = Array.from(root.querySelectorAll("img")).filter(isVisibleImage);
+  const previewImages = visibleImages.filter(isLargePreviewImage);
+  const ordered = [...previewImages, ...visibleImages];
+  const unique = new Set<HTMLImageElement>();
+  const result: HTMLImageElement[] = [];
+
+  for (const image of ordered) {
+    if (unique.has(image)) {
+      continue;
+    }
+
+    unique.add(image);
+    result.push(image);
+  }
+
+  return result.sort((left, right) => getImageDisplayArea(right) - getImageDisplayArea(left));
+}
+
 function getImageMetadataText(image: HTMLImageElement): string {
   const source = image.currentSrc || image.src;
   const alt = image.alt || "";
@@ -256,12 +311,167 @@ function getImageSnippet(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
+function getTextSnippet(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function getUniqueMatchKeywords(matches: DetectionMatchRecord[]): string[] {
+  const keywords: string[] = [];
+  const seen = new Set<string>();
+
+  for (const match of matches) {
+    const keyword = getMatchKeyword(match);
+    const key = createOccurrenceKey(keyword);
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    keywords.push(keyword);
+  }
+
+  return keywords;
+}
+
+function formatDebugKeywords(keywords: string[]): string {
+  if (keywords.length === 0) {
+    return "-";
+  }
+
+  if (keywords.length <= 3) {
+    return keywords.join(", ");
+  }
+
+  return `${keywords.slice(0, 3).join(", ")} +${keywords.length - 3}`;
+}
+
+function getImageTitleLabel(image: HTMLImageElement, isPreviewImage: boolean): string {
+  const source = image.currentSrc || image.src;
+
+  try {
+    const url = new URL(source);
+    return `${isPreviewImage ? "Preview" : "Image"} - ${url.host}`;
+  } catch {
+    return `${isPreviewImage ? "Preview" : "Image"} - ${source.slice(0, 48)}`;
+  }
+}
+
+function formatCaptureMethodLabel(
+  finalMethod: "metadata" | "ocr" | "none",
+  captureMethod: "direct" | "visible-tab" | "none",
+): string {
+  if (finalMethod === "metadata") {
+    return "tidak dicoba";
+  }
+
+  if (captureMethod === "visible-tab") {
+    return "visible-tab";
+  }
+
+  if (captureMethod === "direct") {
+    return "direct";
+  }
+
+  return "none";
+}
+
 function formatDuration(durationMs: number): string {
   if (durationMs < 0.01) {
     return "<0.01 ms";
   }
 
   return `${durationMs.toFixed(2)} ms`;
+}
+
+function requestVisibleTabCapture(): Promise<CaptureVisibleTabResponse> {
+  return new Promise((resolve) => {
+    if (typeof chrome === "undefined" || chrome.runtime?.sendMessage === undefined) {
+      resolve({
+        ok: false,
+        error: "Chrome runtime messaging unavailable",
+      });
+      return;
+    }
+
+    const message: CaptureVisibleTabMessage = {
+      type: MESSAGE_CAPTURE_VISIBLE_TAB,
+    };
+
+    chrome.runtime.sendMessage(message, (response) => {
+      const error = chrome.runtime.lastError;
+
+      if (error !== undefined) {
+        resolve({
+          ok: false,
+          error: error.message ?? "Gagal meminta screenshot tab.",
+        });
+        return;
+      }
+
+      if (
+        typeof response === "object" &&
+        response !== null &&
+        "ok" in response &&
+        typeof (response as { ok?: unknown }).ok === "boolean"
+      ) {
+        resolve(response as CaptureVisibleTabResponse);
+        return;
+      }
+
+      resolve({
+        ok: false,
+        error: "Respons screenshot tab tidak valid.",
+      });
+    });
+  });
+}
+
+function getOcrMatchedKeywords(matches: DetectionMatchRecord[]): string[] {
+  const keywords: string[] = [];
+  const seen = new Set<string>();
+
+  for (const match of matches) {
+    const keyword = getMatchKeyword(match);
+    const key = createOccurrenceKey(keyword);
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    keywords.push(keyword);
+  }
+
+  return keywords;
+}
+
+function createOcrAlgorithmLabel(matches: DetectionMatchRecord[], captureMethod: string): string {
+  const algorithms: DetectionAlgorithmName[] = [];
+
+  for (const match of matches) {
+    for (const algorithm of getMatchAlgorithms(match)) {
+      let exists = false;
+
+      for (const registeredAlgorithm of algorithms) {
+        if (registeredAlgorithm === algorithm) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (!exists) {
+        algorithms.push(algorithm);
+      }
+    }
+  }
+
+  const ocrLabel = captureMethod === "visible-tab" ? "OCR (Visible Tab)" : "OCR";
+  if (algorithms.length === 0) {
+    return ocrLabel;
+  }
+
+  return `${ocrLabel} + ${algorithms.map(formatAlgorithmName).join(", ")}`;
 }
 
 export async function scanPage(
@@ -276,7 +486,11 @@ export async function scanPage(
   const algorithmMatches = createAlgorithmTotals();
   const occurrenceCounts = new Map<string, number>();
   const occurrenceLabels = new Map<string, string>();
+  const debugItems: PopupDebugItem[] = [];
   let totalMatches = 0;
+  let visibleTabCapturePromise: Promise<CaptureVisibleTabResponse> | null = null;
+  let matchedTextNodeCount = 0;
+  let matchedImageCount = 0;
 
   if (root === null) {
     return {
@@ -291,6 +505,13 @@ export async function scanPage(
         algorithmDurationsMs,
         detections: [],
         blurred: blurEnabled,
+        debug: {
+          scannedTextNodes: 0,
+          matchedTextNodes: 0,
+          scannedImages: 0,
+          matchedImages: 0,
+          items: [],
+        },
       },
     };
   }
@@ -304,6 +525,18 @@ export async function scanPage(
     for (const benchmark of report.benchmarks) {
       algorithmDurationsMs[benchmark.algorithm] += benchmark.durationMs;
       algorithmMatches[benchmark.algorithm] += benchmark.matches;
+    }
+
+    if (report.matches.length > 0) {
+      matchedTextNodeCount += 1;
+      const keywordsLabel = formatDebugKeywords(getUniqueMatchKeywords(report.matches));
+
+      debugItems.push({
+        kind: "text",
+        title: getTextSnippet(text),
+        status: `${report.matches.length} match`,
+        detail: `Keyword: ${keywordsLabel}`,
+      });
     }
 
     const candidates: HighlightDescriptor[] = [];
@@ -352,13 +585,10 @@ export async function scanPage(
     textHighlights.push(...selected);
   }
 
-  const imageElements = Array.from(root.querySelectorAll("img"));
+  const imageElements = collectScannableImages(root);
 
   for (const image of imageElements) {
-    if (!isVisibleImage(image)) {
-      continue;
-    }
-
+    const isPreviewImage = isLargePreviewImage(image);
     const metadataText = getImageMetadataText(image);
     let matchedKeywords = collectContainedPatterns(
       metadataText,
@@ -367,18 +597,111 @@ export async function scanPage(
     let matchedText = getImageSnippet(metadataText);
     let detectionMethod: "metadata" | "ocr" = "metadata";
     let durationMs = 0;
+    let ocrFailureReason: string | null = null;
+    let captureMethod: "direct" | "visible-tab" | "none" = "none";
+    let ocrMatches: DetectionMatchRecord[] = [];
+    let finalMethod: "metadata" | "ocr" | "none" =
+      matchedKeywords.length > 0 ? "metadata" : "none";
 
     if (matchedKeywords.length === 0) {
-      const ocrResult = await scanImageKeywords(image, keywords.map((keyword) => keyword.raw));
-      matchedKeywords = ocrResult.matchedKeywords;
+      let screenshotDataUrl: string | null = null;
+      let screenshotFailureReason: string | null = null;
+
+      if (isPreviewImage) {
+        if (visibleTabCapturePromise === null) {
+          visibleTabCapturePromise = requestVisibleTabCapture();
+        }
+
+        const captureResponse = await visibleTabCapturePromise;
+        if (captureResponse.ok) {
+          screenshotDataUrl = captureResponse.dataUrl;
+        } else {
+          screenshotFailureReason = captureResponse.error;
+        }
+      }
+
+      const ocrResult = await scanImageKeywords(image, keywords, {
+        preferScreenshotCapture: isPreviewImage,
+        screenshotDataUrl,
+        screenshotFailureReason,
+      });
+      algorithmDurationsMs.ocr += ocrResult.durationMs;
+      captureMethod = ocrResult.captureMethod;
+      ocrMatches = ocrResult.report?.matches ?? [];
+      matchedKeywords =
+        ocrMatches.length === 0 ? [] : getOcrMatchedKeywords(ocrMatches);
       matchedText = getImageSnippet(ocrResult.text);
       detectionMethod = "ocr";
       durationMs = ocrResult.durationMs;
+      ocrFailureReason = ocrResult.failureReason;
+      finalMethod = matchedKeywords.length > 0 ? "ocr" : "none";
+
+      if (ocrResult.report !== null && matchedKeywords.length > 0) {
+        for (const benchmark of ocrResult.report.benchmarks) {
+          if (benchmark.algorithm === "ocr") {
+            continue;
+          }
+
+          algorithmDurationsMs[benchmark.algorithm] += benchmark.durationMs;
+          algorithmMatches[benchmark.algorithm] += benchmark.matches;
+        }
+      }
     }
+
+    if (
+      matchedKeywords.length === 0 &&
+      ocrFailureReason !== null &&
+      isPreviewImage
+    ) {
+      imageHighlights.push({
+        element: image,
+        keyword: "Preview image besar",
+        matchedText:
+          matchedText.length > 0 ? matchedText : "OCR tidak menghasilkan teks.",
+        algorithmLabel: "OCR gagal",
+        durationLabel: formatDuration(durationMs),
+        durationMs,
+        occurrenceKey: `ocr-failed:${image.currentSrc || image.src || "preview"}`,
+        occurrences: 0,
+        priority: 0,
+        shouldBlur: false,
+        variant: "ocr-failed",
+        noteLabel: "Alasan",
+        noteValue: ocrFailureReason,
+      });
+    }
+
+    debugItems.push({
+      kind: "image",
+      title: getImageTitleLabel(image, isPreviewImage),
+      status:
+        finalMethod === "metadata"
+          ? "Metadata"
+          : finalMethod === "ocr"
+            ? captureMethod === "visible-tab"
+              ? "OCR Visible Tab"
+              : "OCR"
+            : ocrFailureReason !== null
+              ? "OCR gagal"
+              : "No match",
+      detail:
+        finalMethod === "metadata"
+          ? `Keyword: ${formatDebugKeywords(matchedKeywords)}`
+          : finalMethod === "ocr"
+            ? `Keyword: ${formatDebugKeywords(matchedKeywords)}`
+            : `OCR text: ${matchedText.length > 0 ? matchedText : "-"}`,
+      note: ocrFailureReason ?? undefined,
+      meta: [
+        `Preview besar: ${isPreviewImage ? "ya" : "tidak"}`,
+        `Capture OCR: ${formatCaptureMethodLabel(finalMethod, captureMethod)}`,
+      ],
+    });
 
     if (matchedKeywords.length === 0) {
       continue;
     }
+
+    matchedImageCount += 1;
 
     const primaryKeyword = matchedKeywords[0];
     const occurrenceKey = createOccurrenceKey(primaryKeyword);
@@ -388,12 +711,17 @@ export async function scanPage(
       element: image,
       keyword: label,
       matchedText,
-      algorithmLabel: detectionMethod === "ocr" ? "OCR" : "Metadata",
+      algorithmLabel:
+        detectionMethod === "ocr"
+          ? createOcrAlgorithmLabel(ocrMatches, captureMethod)
+          : "Metadata",
       durationLabel: formatDuration(durationMs),
       durationMs,
       occurrenceKey,
       occurrences: 0,
       priority: 1,
+      shouldBlur: true,
+      variant: "match",
     });
 
     for (const keyword of matchedKeywords) {
@@ -408,7 +736,6 @@ export async function scanPage(
 
     if (detectionMethod === "ocr") {
       algorithmMatches.ocr += matchedKeywords.length;
-      algorithmDurationsMs.ocr += durationMs;
     }
   }
 
@@ -437,6 +764,13 @@ export async function scanPage(
       algorithmDurationsMs,
       detections: buildDetectionBuckets(occurrenceCounts, occurrenceLabels),
       blurred: blurEnabled,
+      debug: {
+        scannedTextNodes: textNodes.length,
+        matchedTextNodes: matchedTextNodeCount,
+        scannedImages: imageElements.length,
+        matchedImages: matchedImageCount,
+        items: debugItems,
+      },
     },
   };
 }

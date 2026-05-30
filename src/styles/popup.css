@@ -8,7 +8,7 @@
 body {
   background: #f8fafc;
   margin: 0;
-  min-width: 360px;
+  min-width: 380px;
 }
 
 button,
@@ -21,7 +21,7 @@ input {
   display: grid;
   gap: 14px;
   padding: 16px;
-  width: 360px;
+  width: 380px;
 }
 
 .popup-header {
@@ -128,6 +128,103 @@ h2 {
 .stack {
   display: grid;
   gap: 8px;
+}
+
+.debug-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 8px;
+}
+
+.debug-metric-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.debug-metric-card strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.debug-metric-label {
+  color: #64748b;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.debug-list {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.debug-row {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.debug-row-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.debug-row-title,
+.debug-row-status,
+.debug-row-detail,
+.debug-row-note,
+.debug-row-meta-item {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.debug-row-title {
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.debug-row-status {
+  color: #0f766e;
+  flex-shrink: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.debug-row-detail,
+.debug-row-note {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.debug-row-detail {
+  color: #334155;
+}
+
+.debug-row-meta {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.debug-row-meta-item {
+  color: #64748b;
+  margin: 0;
+}
+
+.debug-row-note {
+  color: #b91c1c;
 }
 
 .bar-row {

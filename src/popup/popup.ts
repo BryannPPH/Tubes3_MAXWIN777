@@ -1,6 +1,7 @@
 import "../styles/popup.css";
 import type {
   ContentRequest,
+  PopupDebugItem,
   PopupScanState,
   PopupScanSummary,
 } from "../extension/protocol";
@@ -50,6 +51,8 @@ const uniqueDetectionsElement = getRequiredElement("unique-detections", HTMLElem
 const scanDurationElement = getRequiredElement("scan-duration", HTMLElement);
 const algorithmList = getRequiredElement("algorithm-list", HTMLElement);
 const keywordList = getRequiredElement("keyword-list", HTMLElement);
+const debugMetrics = getRequiredElement("debug-metrics", HTMLElement);
+const debugList = getRequiredElement("debug-list", HTMLElement);
 const statusText = getRequiredElement("status-text", HTMLElement);
 
 function formatDuration(durationMs: number): string {
@@ -143,6 +146,92 @@ function renderKeywords(summary: PopupScanSummary): void {
   }
 }
 
+function createDebugMetricCard(label: string, value: string): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "debug-metric-card";
+
+  const labelElement = document.createElement("span");
+  labelElement.className = "debug-metric-label";
+  labelElement.textContent = label;
+
+  const valueElement = document.createElement("strong");
+  valueElement.textContent = value;
+
+  card.append(labelElement, valueElement);
+  return card;
+}
+
+function createDebugRow(item: PopupDebugItem): HTMLElement {
+  const row = document.createElement("article");
+  row.className = "debug-row";
+
+  const header = document.createElement("div");
+  header.className = "debug-row-header";
+
+  const title = document.createElement("strong");
+  title.className = "debug-row-title";
+  title.textContent = item.title;
+
+  const status = document.createElement("span");
+  status.className = "debug-row-status";
+  status.textContent = item.status;
+
+  header.append(title, status);
+
+  const detail = document.createElement("p");
+  detail.className = "debug-row-detail";
+  detail.textContent = item.detail;
+
+  row.append(header, detail);
+
+  if (item.meta !== undefined && item.meta.length > 0) {
+    const meta = document.createElement("div");
+    meta.className = "debug-row-meta";
+
+    for (const metaItem of item.meta) {
+      const metaLine = document.createElement("p");
+      metaLine.className = "debug-row-meta-item";
+      metaLine.textContent = metaItem;
+      meta.appendChild(metaLine);
+    }
+
+    row.appendChild(meta);
+  }
+
+  if (item.note !== undefined && item.note.length > 0) {
+    const note = document.createElement("p");
+    note.className = "debug-row-note";
+    note.textContent = item.note;
+    row.appendChild(note);
+  }
+
+  return row;
+}
+
+function renderDebug(summary: PopupScanSummary): void {
+  debugMetrics.replaceChildren();
+  debugList.replaceChildren();
+
+  debugMetrics.append(
+    createDebugMetricCard("Text discan", String(summary.debug.scannedTextNodes)),
+    createDebugMetricCard("Text kena", String(summary.debug.matchedTextNodes)),
+    createDebugMetricCard("Image discan", String(summary.debug.scannedImages)),
+    createDebugMetricCard("Image kena", String(summary.debug.matchedImages)),
+  );
+
+  if (summary.debug.items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Belum ada item debug untuk scan ini.";
+    debugList.appendChild(empty);
+    return;
+  }
+
+  for (const item of summary.debug.items) {
+    debugList.appendChild(createDebugRow(item));
+  }
+}
+
 function renderState(state: PopupScanState): void {
   if (state.status === "error") {
     totalMatchesElement.textContent = "0";
@@ -150,6 +239,8 @@ function renderState(state: PopupScanState): void {
     scanDurationElement.textContent = "0.00 ms";
     algorithmList.replaceChildren();
     keywordList.replaceChildren();
+    debugMetrics.replaceChildren();
+    debugList.replaceChildren();
     setStatus(state.error);
     return;
   }
@@ -158,6 +249,8 @@ function renderState(state: PopupScanState): void {
     totalMatchesElement.textContent = "0";
     uniqueDetectionsElement.textContent = "0";
     scanDurationElement.textContent = "0.00 ms";
+    debugMetrics.replaceChildren();
+    debugList.replaceChildren();
     setStatus("Content script belum mengirim hasil scan.");
     return;
   }
@@ -168,6 +261,7 @@ function renderState(state: PopupScanState): void {
   blurToggle.checked = state.summary.blurred;
   renderAlgorithms(state.summary);
   renderKeywords(state.summary);
+  renderDebug(state.summary);
   setStatus(`Terakhir scan: ${new Date(state.summary.scannedAt).toLocaleTimeString()}`);
 }
 

@@ -4,6 +4,8 @@ export interface TooltipPayload {
   algorithmLabel: string;
   occurrences: number;
   durationLabel: string;
+  noteLabel?: string;
+  noteValue?: string;
 }
 
 let tooltipTargets = new WeakMap<HTMLElement, TooltipPayload>();
@@ -52,6 +54,10 @@ function renderTooltip(payload: TooltipPayload): void {
   appendRow(tooltip, "Algoritma", payload.algorithmLabel);
   appendRow(tooltip, "Kemunculan", String(payload.occurrences));
   appendRow(tooltip, "Waktu", payload.durationLabel);
+
+  if (payload.noteLabel !== undefined && payload.noteValue !== undefined) {
+    appendRow(tooltip, payload.noteLabel, payload.noteValue);
+  }
 }
 
 function moveTooltip(event: PointerEvent): void {

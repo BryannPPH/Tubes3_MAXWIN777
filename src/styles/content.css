@@ -15,6 +15,11 @@
   outline-offset: 2px;
 }
 
+.judol-detector-image.judol-detector-image-ocr-failed {
+  outline: 2px dashed rgba(239, 68, 68, 0.88);
+  outline-offset: 3px;
+}
+
 .judol-detector-highlight.judol-detector-blurred {
   background: rgba(30, 41, 59, 0.18);
   filter: blur(4px);

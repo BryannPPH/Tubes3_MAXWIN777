@@ -1,11 +1,9 @@
 # Tubes3_MAXWIN777
+<img width="600" height="646" alt="Anita_Max" src="https://github.com/user-attachments/assets/bf2dd17d-b4a4-4b7b-a896-f3e910dcb470" />
 
 Judol Detector adalah browser extension Chromium berbasis TypeScript untuk mendeteksi konten judi online pada halaman web. Ekstensi ini memindai teks DOM, menandai elemen yang terdeteksi, menampilkan tooltip detail, dan menyediakan statistik realtime pada popup extension.
 
 ## Algoritma
-
-Algoritma wajib yang diimplementasikan from scratch:
-
 - `Knuth-Morris-Pratt (KMP)`: digunakan untuk exact matching setiap keyword dari `keywords/keywords.txt` dengan failure function manual dan perhitungan jumlah komparasi.
 - `Boyer-Moore (BM)`: digunakan untuk exact matching setiap keyword dengan last occurrence table manual, shifting process, dan perhitungan jumlah komparasi.
 - `RegEx`: digunakan untuk menangkap pola judol bertipe `<kata><angka>` dengan 2 atau 3 digit di belakang kata.
